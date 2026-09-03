@@ -1,0 +1,38 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { config } from '../../config.js';
+
+// Entwicklungs-Backend: schreibt jede Mail als .eml in data/outbox,
+// damit der komplette Ablauf ohne echten Versand testbar ist.
+export const name = 'mock';
+
+export async function sendMail({ to, subject, body, from = config.mailFrom, replyTo }) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const file = path.join(config.outboxDir, `${stamp}-${to.replace(/[^a-z0-9]/gi, '_')}.eml`);
+  const eml = [
+    `From: ${from}`,
+    `To: ${to}`,
+    replyTo ? `Reply-To: ${replyTo}` : null,
+    `Subject: ${subject}`,
+    `Date: ${new Date().toUTCString()}`,
+    'Content-Type: text/plain; charset=utf-8',
+    '',
+    body,
+  ].filter(Boolean).join('\n');
+  fs.writeFileSync(file, eml, 'utf8');
+  return { id: path.basename(file), driver: 'mock', file };
+}
+
+// Sucht im "Posteingang" nach einer Antwort auf ein Ticket. Im Mock-Betrieb
+// liegt der Posteingang unter data/inbox - dort abgelegte Dateien, deren Name
+// das Ticket enthaelt, gelten als Antwort.
+export async function findReply(ticket) {
+  const inbox = path.join(config.dataDir, 'inbox');
+  fs.mkdirSync(inbox, { recursive: true });
+  const hit = fs.readdirSync(inbox).find((f) => f.includes(ticket));
+  return hit ? { id: hit, subject: hit, hasAttachment: true, file: path.join(inbox, hit) } : null;
+}
+
+export function describe() {
+  return { driver: 'mock', outbox: config.outboxDir, ready: true };
+}

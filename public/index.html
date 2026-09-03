@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buchhaltungsvorbereitung</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<header>
+  <h1>Buchhaltungsvorbereitung</h1>
+  <select id="periodenwahl" style="width:auto"></select>
+  <button class="knopf leise klein" id="neuer-zeitraum">Neuer Zeitraum</button>
+  <div class="status" id="systemstatus"></div>
+</header>
+
+<nav>
+  <button data-reiter="aufgaben" class="aktiv">Aufgaben</button>
+  <button data-reiter="bank">Bankabgleich</button>
+  <button data-reiter="belege">Belege erstellen</button>
+  <button data-reiter="logbuch">Logbuch</button>
+  <button data-reiter="einstellungen">Einstellungen</button>
+</nav>
+
+<main>
+
+  <!-- ------------------------------- Aufgaben ------------------------------ -->
+  <section class="reiter aktiv" id="reiter-aufgaben">
+    <div class="aufgaben-layout">
+      <div>
+        <div class="karte">
+          <h2>Aufgabenliste</h2>
+          <div class="fortschritt"><div id="fortschrittsbalken" style="width:0"></div></div>
+          <ul class="aufgabenliste" id="aufgabenliste"></ul>
+          <div class="inhalt" style="border-top:1px solid var(--rand); display:flex; gap:8px">
+            <button class="knopf leise klein" id="aufgabe-hinzufuegen">Aufgabe hinzufügen</button>
+            <button class="knopf leise klein" id="als-vorlage">Als Vorlage sichern</button>
+          </div>
+        </div>
+
+        <div class="karte">
+          <h2>Liste mit KI erstellen oder ändern</h2>
+          <div class="inhalt">
+            <label class="feld">
+              <span>Anweisung</span>
+              <textarea id="ki-prompt" placeholder="z. B. Erstelle die Standardliste für einen Monat mit Kreditkarte und Lohn — oder: Ergänze eine Aufgabe für die Umsatzsteuervoranmeldung und entferne den Punkt zur Kasse."></textarea>
+            </label>
+            <label class="feld">
+              <span>Vorgehen</span>
+              <select id="ki-modus">
+                <option value="ersetzen">Liste neu erstellen (erledigte Aufgaben bleiben)</option>
+                <option value="ergaenzen">Bestehende Liste ändern und ergänzen</option>
+              </select>
+            </label>
+            <button class="knopf" id="ki-generieren">Liste erzeugen</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="karte" id="aufgabendetail">
+        <div class="leer">Wähle links eine Aufgabe aus.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------ Bankabgleich --------------------------- -->
+  <section class="reiter" id="reiter-bank">
+    <div class="karte">
+      <h2>Bankauszug hochladen</h2>
+      <div class="inhalt">
+        <div class="ablegen" id="bank-ablegen">
+          CSV-Export des Kontoauszugs hierher ziehen oder klicken
+          <input type="file" id="bank-datei" accept=".csv,.txt,text/csv" hidden>
+        </div>
+        <p class="klein-text leise" style="margin-bottom:0">
+          Trennzeichen, Spalten und deutsche Zahlenformate werden automatisch erkannt.
+        </p>
+      </div>
+    </div>
+
+    <div class="karte">
+      <h2>Buchungsgruppen und Belegabgleich</h2>
+      <div id="bank-gruppen"><div class="leer">Noch kein Kontoauszug für diesen Zeitraum importiert.</div></div>
+    </div>
+  </section>
+
+  <!-- ------------------------------ Belege --------------------------------- -->
+  <section class="reiter" id="reiter-belege">
+    <div class="karte">
+      <h2>Bewirtungsbeleg erstellen</h2>
+      <div class="inhalt">
+        <p class="klein-text leise" style="margin-top:0">
+          Erzeugt einen Eigenbeleg nach § 4 Abs. 5 Satz 1 Nr. 2 EStG und fügt die Originalquittung
+          zu einem PDF zusammen. Lade die Quittung zuerst bei einer Aufgabe hoch, dann kannst du sie
+          hier auslesen lassen und als Anlage auswählen.
+        </p>
+        <div class="reihe" style="margin-bottom:14px">
+          <select id="bew-quittung" style="width:auto;max-width:100%"></select>
+          <button class="knopf leise klein" id="bew-auslesen">Quittung mit KI auslesen</button>
+        </div>
+        <div id="bew-offene-punkte"></div>
+        <div class="raster">
+          <label class="feld"><span>Tag der Bewirtung *</span><input type="date" id="bew-datum"></label>
+          <label class="feld"><span>Gaststätte *</span><input type="text" id="bew-restaurant"></label>
+          <label class="feld"><span>Straße</span><input type="text" id="bew-strasse"></label>
+          <label class="feld"><span>PLZ</span><input type="text" id="bew-plz"></label>
+          <label class="feld"><span>Ort</span><input type="text" id="bew-ort"></label>
+          <label class="feld"><span>Bewirtende Person</span><input type="text" id="bew-bewirtender"></label>
+          <label class="feld"><span>Rechnungsbetrag brutto (€) *</span><input type="number" step="0.01" id="bew-brutto"></label>
+          <label class="feld"><span>Trinkgeld (€)</span><input type="number" step="0.01" id="bew-trinkgeld"></label>
+          <label class="feld"><span>Enthaltene USt (€)</span><input type="number" step="0.01" id="bew-ust"></label>
+          <label class="feld"><span>Zahlungsart</span><input type="text" id="bew-zahlungsart" placeholder="z. B. Firmenkreditkarte"></label>
+        </div>
+        <label class="feld"><span>Konkreter Anlass * (nicht „Geschäftsessen“, sondern der tatsächliche Grund)</span>
+          <textarea id="bew-anlass" style="min-height:60px"></textarea></label>
+        <label class="feld"><span>Bewirtete Personen * (eine Person je Zeile, Gastgeber einschließen)</span>
+          <textarea id="bew-teilnehmer" placeholder="Anna Zimmer (LexAid)&#10;Dr. Peter Muster (Muster AG)"></textarea></label>
+        <label class="feld"><span>Aufgabe zuordnen</span><select id="bew-aufgabe"></select></label>
+        <button class="knopf" id="bew-erstellen">Bewirtungsbeleg erstellen</button>
+      </div>
+    </div>
+
+    <div class="karte">
+      <h2>Spesenabrechnung erstellen</h2>
+      <div class="inhalt">
+        <p class="klein-text leise" style="margin-top:0">
+          Für Hotel-, Flug- und Bahnrechnungen, die auf einen privaten Namen lauten,
+          aber mit der Firmenkreditkarte bezahlt wurden. Verpflegungspauschalen nach § 9 Abs. 4a EStG
+          werden mitgerechnet.
+        </p>
+        <div class="raster">
+          <label class="feld"><span>Reisende Person *</span><input type="text" id="sp-reisender"></label>
+          <label class="feld"><span>Reiseziel</span><input type="text" id="sp-ziel"></label>
+          <label class="feld"><span>Beginn *</span><input type="date" id="sp-beginn"></label>
+          <label class="feld"><span>Ende</span><input type="date" id="sp-ende"></label>
+        </div>
+        <label class="feld"><span>Reisegrund *</span><textarea id="sp-grund" style="min-height:56px"></textarea></label>
+        <label class="feld"><span>Belegte Aufwendungen</span></label>
+        <table><thead><tr><th>Datum</th><th>Art</th><th>Beschreibung</th><th class="rechts">Betrag (€)</th><th></th></tr></thead>
+          <tbody id="sp-positionen"></tbody></table>
+        <button class="knopf leise klein" id="sp-position-hinzufuegen" style="margin:10px 0">Position hinzufügen</button>
+        <label class="feld"><span>Verpflegungstage</span></label>
+        <table><thead><tr><th>Datum</th><th>Abwesenheit</th><th>Frühstück</th><th>Mittag</th><th>Abend</th><th></th></tr></thead>
+          <tbody id="sp-tage"></tbody></table>
+        <button class="knopf leise klein" id="sp-tag-hinzufuegen" style="margin:10px 0">Tag hinzufügen</button>
+        <label class="feld" style="margin-top:12px"><span>Anlagen (Originalrechnungen)</span><select id="sp-anlagen" multiple size="4"></select></label>
+        <label class="feld"><span>Aufgabe zuordnen</span><select id="sp-aufgabe"></select></label>
+        <label class="reihe" style="margin-bottom:12px">
+          <input type="checkbox" id="sp-firmenkarte" checked style="width:auto"> Mit Firmenkreditkarte bezahlt
+        </label>
+        <button class="knopf" id="sp-erstellen">Spesenabrechnung erstellen</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------ Logbuch -------------------------------- -->
+  <section class="reiter" id="reiter-logbuch">
+    <div class="karte">
+      <h2>Logbuch</h2>
+      <div class="inhalt reihe" style="border-bottom:1px solid var(--rand)">
+        <button class="knopf leise klein" id="logbuch-pruefen">Offene Anfragen jetzt prüfen</button>
+        <span class="klein-text leise">Prüft im Buchhaltungspostfach, ob zu den Tickets Antworten eingegangen sind.</span>
+      </div>
+      <div id="logbuch-inhalt"><div class="leer">Noch keine Einträge.</div></div>
+    </div>
+  </section>
+
+  <!-- --------------------------- Einstellungen ----------------------------- -->
+  <section class="reiter" id="reiter-einstellungen">
+    <div class="karte">
+      <h2>Kürzel für Belegabrufe</h2>
+      <div class="inhalt">
+        <p class="klein-text leise" style="margin-top:0">
+          Schreibst du an einer Buchung ein Kürzel dazu, fragt das System den Beleg per Mail an.
+          Unbekannte Kürzel werden nach dem Muster <code>kürzel@<span id="kuerzel-domain"></span></code> aufgelöst.
+        </p>
+        <div class="reihe" style="margin-bottom:14px">
+          <input type="text" id="kuerzel-code" placeholder="az" style="width:110px">
+          <input type="text" id="kuerzel-email" placeholder="az@lexaid.net" style="width:230px">
+          <input type="text" id="kuerzel-name" placeholder="Anna Zimmer" style="width:190px">
+          <button class="knopf klein" id="kuerzel-speichern">Speichern</button>
+        </div>
+        <table><thead><tr><th>Kürzel</th><th>E-Mail</th><th>Name</th><th></th></tr></thead>
+          <tbody id="kuerzel-liste"></tbody></table>
+      </div>
+    </div>
+    <div class="karte">
+      <h2>Systemzustand</h2>
+      <div class="inhalt"><pre id="status-details" class="klein-text leise" style="margin:0;white-space:pre-wrap"></pre></div>
+    </div>
+  </section>
+
+</main>
+
+<div id="hinweis"></div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>
