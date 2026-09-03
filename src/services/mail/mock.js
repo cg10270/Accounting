@@ -30,7 +30,16 @@ export async function findReply(ticket) {
   const inbox = path.join(config.dataDir, 'inbox');
   fs.mkdirSync(inbox, { recursive: true });
   const hit = fs.readdirSync(inbox).find((f) => f.includes(ticket));
-  return hit ? { id: hit, subject: hit, hasAttachment: true, file: path.join(inbox, hit) } : null;
+  if (!hit) return null;
+  const datei = path.join(inbox, hit);
+  return {
+    id: hit,
+    subject: hit,
+    from: 'test@example.invalid',
+    hasAttachment: true,
+    anhaenge: [{ filename: hit, mime: 'message/rfc822', attachmentId: hit, size: fs.statSync(datei).size }],
+    ladeAnhang: async () => fs.readFileSync(datei),
+  };
 }
 
 export function describe() {

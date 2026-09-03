@@ -156,6 +156,15 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 `);
 
+// Nachtraeglich ergaenzte Spalten: CREATE TABLE IF NOT EXISTS zieht bestehende
+// Datenbanken nicht mit, deshalb hier gezielt nachruesten.
+for (const [tabelle, spalte, definition] of [
+  ['artifacts', 'web_url', "TEXT NOT NULL DEFAULT ''"],
+]) {
+  const vorhanden = db.prepare(`PRAGMA table_info(${tabelle})`).all().some((s) => s.name === spalte);
+  if (!vorhanden) db.exec(`ALTER TABLE ${tabelle} ADD COLUMN ${spalte} ${definition}`);
+}
+
 export const all = (sql, ...params) => db.prepare(sql).all(...params);
 export const get = (sql, ...params) => db.prepare(sql).get(...params);
 export const run = (sql, ...params) => db.prepare(sql).run(...params);

@@ -35,6 +35,11 @@ export const config = {
   driveRootFolderId: process.env.DRIVE_ROOT_FOLDER_ID || '',
   googleServiceAccountJson: process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '',
   googleImpersonateUser: process.env.GOOGLE_IMPERSONATE_USER || '',
+  // Endpunkte sind ueberschreibbar, damit die Anbindung gegen einen
+  // Testserver geprueft werden kann, ohne echte Google-Konten zu beruehren.
+  driveApi: process.env.GOOGLE_DRIVE_API || 'https://www.googleapis.com/drive/v3',
+  driveUploadApi: process.env.GOOGLE_DRIVE_UPLOAD_API || 'https://www.googleapis.com/upload/drive/v3',
+  gmailApi: process.env.GOOGLE_GMAIL_API || 'https://gmail.googleapis.com/gmail/v1',
 
   mailDriver: process.env.MAIL_DRIVER || 'mock',
   outboxDir: path.join(ROOT, 'data', 'outbox'),

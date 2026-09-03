@@ -3,3 +3,6 @@ data/
 .env
 *.log
 .DS_Store
+secrets/
+*.pem
+service-account*.json

@@ -1,11 +1,11 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import { config, ROOT, aiEnabled } from './config.js';
 import { all, get, run } from './db.js';
 import { Router, json, fehler, leseJson, leseBody } from './http.js';
-import { storage, buildPath, sanitize } from './services/storage/index.js';
+import { storage, sanitize } from './services/storage/index.js';
+import { speichereDatei, leseDatei } from './services/ablage.js';
 import { mailer } from './services/mail/index.js';
 import { encryptSecret, maskSecret, vaultEnabled } from './services/vault.js';
 import { generiereAufgaben } from './services/llm.js';
@@ -68,7 +68,7 @@ function ladeAufgaben(periodId) {
   const aufgaben = all('SELECT * FROM tasks WHERE period_id = ? ORDER BY position, id', periodId);
   for (const a of aufgaben) {
     a.dateien = all(
-      'SELECT id, filename, mime, size, source, vendor, amount_cents, doc_date, uploaded_at, storage_path FROM artifacts WHERE task_id = ? ORDER BY uploaded_at DESC',
+      'SELECT id, filename, mime, size, source, vendor, amount_cents, doc_date, uploaded_at, storage_path, web_url FROM artifacts WHERE task_id = ? ORDER BY uploaded_at DESC',
       a.id,
     );
     a.zugaenge = all(
@@ -170,24 +170,6 @@ router.post('/api/tasks/:id/ki/lauf', async (req, res) => json(res, await laufeA
 
 // --- Dateien ----------------------------------------------------------------
 
-async function speichereDatei({ periodId, taskId, filename, mime, buffer, source }) {
-  const period = get('SELECT * FROM periods WHERE id = ?', periodId);
-  if (!period) throw new Error('Zeitraum nicht gefunden.');
-  const task = taskId ? get('SELECT * FROM tasks WHERE id = ?', taskId) : null;
-
-  const relPath = buildPath(period, task?.title, filename);
-  const abgelegt = await storage.putFile(relPath, buffer);
-  const checksum = crypto.createHash('sha256').update(buffer).digest('hex');
-
-  const r = run(
-    `INSERT INTO artifacts (period_id, task_id, filename, mime, size, checksum, storage_path, storage_id, source)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    periodId, taskId, sanitize(filename), mime, buffer.length, checksum,
-    abgelegt.storagePath, abgelegt.storageId, source,
-  );
-  return get('SELECT * FROM artifacts WHERE id = ?', Number(r.lastInsertRowid));
-}
-
 // Upload ohne Multipart: die Datei kommt als reiner Koerper, Name und Typ als Header.
 router.post('/api/tasks/:id/dateien', async (req, res) => {
   const taskId = Number(req.params.id);
@@ -203,7 +185,7 @@ router.post('/api/tasks/:id/dateien', async (req, res) => {
 router.get('/api/dateien/:id/inhalt', async (req, res) => {
   const datei = get('SELECT * FROM artifacts WHERE id = ?', Number(req.params.id));
   if (!datei) throw new Error('Datei nicht gefunden.');
-  const buffer = await storage.getFile(datei.storage_path);
+  const buffer = await leseDatei(datei);
   res.writeHead(200, {
     'Content-Type': datei.mime,
     'Content-Length': buffer.length,
@@ -227,7 +209,7 @@ router.patch('/api/dateien/:id', async (req, res) => {
 router.delete('/api/dateien/:id', async (req, res) => {
   const datei = get('SELECT * FROM artifacts WHERE id = ?', Number(req.params.id));
   if (!datei) throw new Error('Datei nicht gefunden.');
-  await storage.deleteFile(datei.storage_path).catch(() => {});
+  await storage.deleteFile({ path: datei.storage_path, id: datei.storage_id }).catch(() => {});
   run('DELETE FROM artifacts WHERE id = ?', datei.id);
   json(res, { geloescht: datei.id });
 });
@@ -370,7 +352,7 @@ router.post('/api/dateien/:id/analyse', async (req, res) => {
   const datei = get('SELECT * FROM artifacts WHERE id = ?', Number(req.params.id));
   if (!datei) throw new Error('Datei nicht gefunden.');
   const { art = 'bewirtung' } = await leseJson(req);
-  const buffer = await storage.getFile(datei.storage_path);
+  const buffer = await leseDatei(datei);
   json(res, await analysiereQuittung({ buffer, mime: datei.mime, filename: datei.filename, art }));
 });
 
@@ -378,7 +360,7 @@ async function belegAblegen({ periodId, taskId, titel, bytes, anlagenIds }) {
   const anlagen = [];
   for (const id of anlagenIds || []) {
     const a = get('SELECT * FROM artifacts WHERE id = ?', Number(id));
-    if (a) anlagen.push({ buffer: await storage.getFile(a.storage_path), mime: a.mime, filename: a.filename });
+    if (a) anlagen.push({ buffer: await leseDatei(a), mime: a.mime, filename: a.filename });
   }
   const kombiniert = await kombiniere(bytes, anlagen);
   return speichereDatei({

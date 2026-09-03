@@ -15,15 +15,16 @@ export async function putFile(relPath, buffer) {
   const target = abs(relPath);
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, buffer);
-  return { storagePath: relPath, storageId: relPath };
+  return { storagePath: relPath, storageId: relPath, webUrl: '' };
 }
 
-export async function getFile(relPath) {
-  return fs.readFileSync(abs(relPath));
+// Verweise kommen als { path, id }. Lokal ist die Kennung der Pfad selbst.
+export async function getFile({ path: relPath, id }) {
+  return fs.readFileSync(abs(relPath || id));
 }
 
-export async function deleteFile(relPath) {
-  const target = abs(relPath);
+export async function deleteFile({ path: relPath, id }) {
+  const target = abs(relPath || id);
   if (fs.existsSync(target)) fs.unlinkSync(target);
 }
 

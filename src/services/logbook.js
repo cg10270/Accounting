@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { mailer } from './mail/index.js';
 import { formatEuro } from './bank/grouping.js';
 import { datumDe } from './steuerregeln.js';
+import { speichereDatei } from './ablage.js';
 
 // Das Logbuch ist append-only: Eintraege werden nie geloescht, sondern nur im
 // Status fortgeschrieben. Jede Zustandsaenderung erzeugt zusaetzlich ein
@@ -130,11 +131,55 @@ export async function pruefeErledigung(logbookId) {
     ereignis(logbookId, 'geprueft', 'Noch keine Antwort im Postfach gefunden.');
     return get('SELECT * FROM logbook WHERE id = ?', logbookId);
   }
-  return setzeStatus(
-    logbookId, 'erledigt',
-    `Antwort gefunden: ${antwort.subject}`,
-    antwort.hasAttachment ? 'Beleg per Mail eingegangen' : 'Antwort ohne Anhang eingegangen',
-  );
+  ereignis(logbookId, 'antwort gefunden', `${antwort.from || ''} — ${antwort.subject}`.trim());
+
+  // Der eingegangene Beleg wandert sofort in die Ablage. Bliebe er im
+  // Postfach, waere die Anfrage zwar beantwortet, der Beleg aber nirgends
+  // auffindbar - und der Bankabgleich zaehlte ihn weiterhin als Luecke.
+  const abgelegt = await legeAnhaengeAb(eintrag, antwort);
+
+  const beschreibung = abgelegt.length
+    ? `Beleg per Mail eingegangen und abgelegt: ${abgelegt.map((d) => d.filename).join(', ')}`
+    : antwort.hasAttachment
+      ? 'Beleg eingegangen, konnte aber nicht abgelegt werden'
+      : 'Antwort ohne Anhang eingegangen';
+
+  return setzeStatus(logbookId, 'erledigt', `Antwort gefunden: ${antwort.subject}`, beschreibung);
+}
+
+// Legt die Anhaenge einer Antwort in der Ablage ab und verknuepft sie mit der
+// Aufgabe und - ueber den Buchungspartner - mit der Buchungsgruppe.
+async function legeAnhaengeAb(eintrag, antwort) {
+  if (!eintrag.period_id || !antwort.anhaenge?.length || !antwort.ladeAnhang) return [];
+  const buchung = eintrag.tx_id ? get('SELECT * FROM bank_tx WHERE id = ?', eintrag.tx_id) : null;
+  const abgelegt = [];
+
+  for (const anhang of antwort.anhaenge) {
+    try {
+      const inhalt = await antwort.ladeAnhang(anhang.attachmentId);
+      const datei = await speichereDatei({
+        periodId: eintrag.period_id,
+        taskId: eintrag.task_id,
+        filename: `${eintrag.ticket} ${anhang.filename}`,
+        mime: anhang.mime,
+        buffer: inhalt,
+        source: 'mail',
+        ordner: 'Beleganfragen',
+      });
+      // Zuordnung fuer den Bankabgleich aus der angefragten Buchung uebernehmen.
+      if (buchung) {
+        run('UPDATE artifacts SET vendor = ?, amount_cents = ?, doc_date = ? WHERE id = ?',
+          buchung.counterparty, Math.abs(buchung.amount_cents), buchung.booking_date, datei.id);
+      }
+      abgelegt.push(datei);
+      ereignis(eintrag.id, 'beleg abgelegt', datei.storage_path);
+    } catch (err) {
+      // Ein fehlgeschlagener Anhang darf die Erledigung nicht verschlucken -
+      // er wird vermerkt, damit die Luecke sichtbar bleibt.
+      ereignis(eintrag.id, 'ablage fehlgeschlagen', `${anhang.filename}: ${err.message}`);
+    }
+  }
+  return abgelegt;
 }
 
 export async function pruefeAlleOffenen(periodId = null) {

@@ -1,32 +1,55 @@
 import { config } from '../../config.js';
+import * as gmail from '../google/gmail.js';
+import { ladeDienstkonto } from '../google/auth.js';
 
-// Gmail-Versand und Posteingangspruefung ueber denselben Service Account
-// wie das Drive-Backend (Domain-Wide Delegation, Scopes gmail.send und
-// gmail.readonly, handelnd als GOOGLE_IMPERSONATE_USER).
-//
-// Erledigungspruefung: jede Beleganfrage traegt ein Ticket im Betreff
-// (Format ACC-<Jahr><Monat>-<laufend>). findReply() sucht im Postfach
-// ACCOUNTING_INBOX nach einer Nachricht, die dieses Ticket enthaelt und
-// einen Anhang mitbringt.
+// Mailversand und Posteingangspruefung ueber Gmail, mit demselben Service
+// Account wie die Drive-Ablage. Einrichtung siehe
+// src/services/storage/googleDrive.js.
 
 export const name = 'gmail';
 
-function notConfigured() {
-  throw new Error(
-    'Gmail-Backend ist noch nicht konfiguriert. Bitte Service Account einrichten ' +
-    'und die Gmail-Anbindung aktivieren (siehe src/services/mail/gmail.js).'
-  );
+export async function sendMail({ to, subject, body, from = config.mailFrom, replyTo }) {
+  const ergebnis = await gmail.sendeNachricht({ von: from, an: to, betreff: subject, text: body, antwortAn: replyTo });
+  return { id: ergebnis.id, driver: 'gmail', threadId: ergebnis.threadId };
 }
 
-export async function sendMail() { notConfigured(); }
-export async function findReply() { notConfigured(); }
+/**
+ * Sucht die Antwort auf ein Ticket im Postfach ACCOUNTING_INBOX.
+ * Liefert zusaetzlich die Anhaenge, damit der eingegangene Beleg
+ * unmittelbar in der Ablage landen kann.
+ */
+export async function findReply(ticket) {
+  const antwort = await gmail.findeAntwort(ticket);
+  if (!antwort) return null;
+  return {
+    id: antwort.id,
+    subject: antwort.subject,
+    from: antwort.from,
+    hasAttachment: antwort.hasAttachment,
+    anhaenge: antwort.anhaenge,
+    // Wird erst aufgerufen, wenn der Anhang tatsaechlich abgelegt werden soll.
+    ladeAnhang: (attachmentId) => gmail.ladeAnhang(antwort.id, attachmentId),
+  };
+}
 
 export function describe() {
+  const fehlend = [];
+  if (!config.googleServiceAccountJson) fehlend.push('GOOGLE_SERVICE_ACCOUNT_JSON');
+  if (!config.googleImpersonateUser) fehlend.push('GOOGLE_IMPERSONATE_USER');
+
+  let dienstkonto = '';
+  if (!fehlend.length) {
+    try { dienstkonto = ladeDienstkonto().client_email; }
+    catch (err) { fehlend.push(err.message); }
+  }
   return {
     driver: 'gmail',
     from: config.mailFrom,
     inbox: config.accountingInbox,
-    ready: false,
-    hinweis: 'Service-Account-Anbindung noch nicht aktiviert.',
+    dienstkonto,
+    ready: fehlend.length === 0,
+    ...(fehlend.length ? { fehlt: fehlend } : {}),
   };
 }
+
+export const pruefeEinrichtung = gmail.pruefeEinrichtung;

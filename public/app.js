@@ -157,6 +157,7 @@ function zeichneAufgabendetail() {
           <li>
             <a href="/api/dateien/${d.id}/inhalt" target="_blank">${esc(d.filename)}</a>
             <span class="klein-text leise">${(d.size / 1024).toFixed(0)} kB · ${esc(d.source)}${d.amount_cents ? ' · ' + euro(d.amount_cents) : ''}</span>
+            ${d.web_url ? `<a href="${esc(d.web_url)}" target="_blank" class="klein-text" title="In Google Drive öffnen">Drive ↗</a>` : ''}
             <span style="flex:1"></span>
             <input type="text" class="klein-text d-vendor" data-id="${d.id}" value="${esc(d.vendor)}"
                    placeholder="Zuordnung für Bankabgleich" style="width:180px">

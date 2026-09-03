@@ -3,9 +3,9 @@
 Webanwendung zur Vorbereitung der monatlichen Buchhaltung: Aufgabenliste mit KI-Unterstützung,
 Belegablage, Bankabgleich, Erstellung von Eigenbelegen und ein nachvollziehbares Logbuch.
 
-**Stand: Gerüst.** Oberfläche, Datenmodell und Fachlogik sind vollständig und getestet.
-Google Drive, Gmail und die Browser-Steuerung sind hinter Adaptern gekapselt und laufen
-aktuell gegen lokale Ersatz-Backends — siehe [Was noch fehlt](#was-noch-fehlt).
+**Stand:** Oberfläche, Datenmodell, Fachlogik sowie die Anbindung an Google Drive und
+Gmail sind fertig und getestet. Die Browser-Steuerung fehlt noch — siehe
+[Was noch fehlt](#was-noch-fehlt).
 
 ## Schnellstart
 
@@ -27,7 +27,7 @@ Beispielantworten. Ohne `VAULT_PASSPHRASE` werden keine Passwörter angenommen.
 | **Ablage** | Jede Datei landet unter `Buchhaltung/<Jahr>/<MM Monat>/<Aufgabe>/`. Die Übersicht in der Oberfläche ist virtuell — die Wahrheit liegt im Ablage-Backend. |
 | **Bankabgleich** | CSV-Import mit automatischer Erkennung von Trennzeichen, Spalten und deutschen Zahlenformaten. Buchungen werden zu Gruppen zusammengefasst und den vorhandenen Belegen gegenübergestellt: Anzahl, Summe, Belegsumme, Differenz. |
 | **Beleganfragen** | Ein Kürzel an einer Buchung (z. B. `az`) verschickt eine Mail an `az@lexaid.net` mit der Bitte, den Beleg an `accounting@lexaid.net` zu senden. Jede Anfrage bekommt ein Ticket, das im Betreff mitläuft. |
-| **Logbuch** | Append-only. Jede Anfrage und jeder KI-Lauf wird mit vollständigem Verlauf festgehalten. Die Erledigung wird im Postfach anhand des Tickets geprüft. |
+| **Logbuch** | Append-only. Jede Anfrage und jeder KI-Lauf wird mit vollständigem Verlauf festgehalten. Die Erledigung wird im Postfach anhand des Tickets geprüft; ein eingegangener Beleg landet automatisch in der Ablage und wird im Bankabgleich gegengerechnet. |
 | **Belegerstellung** | Bewirtungsbelege nach § 4 Abs. 5 Satz 1 Nr. 2 EStG und Spesenabrechnungen nach § 9 Abs. 4a EStG als PDF, zusammengeführt mit der Originalquittung. Die Quittung kann per KI ausgelesen werden. |
 
 ## Architektur
@@ -47,13 +47,16 @@ src/services/
    logbook.js        Logbuch, Beleganfragen, Erledigungsprüfung
    bank/csv.js       CSV-Parser für Kontoauszüge
    bank/grouping.js  Gruppenbildung und Belegabgleich
+   ablage.js         Einziger Weg, auf dem Dateien ins System gelangen
    storage/          Ablage-Adapter: local (Dateisystem) | gdrive (Service Account)
    mail/             Mail-Adapter:   mock (data/outbox) | gmail (Service Account)
+   google/           Anmeldung als Service Account, Drive- und Gmail-Aufrufe
 ```
 
 Die Adapter in `storage/` und `mail/` haben dieselbe Schnittstelle. Der Wechsel auf
 Google erfolgt über `STORAGE_DRIVER=gdrive` und `MAIL_DRIVER=gmail` in der `.env`,
-ohne Änderung an der übrigen Anwendung.
+ohne Änderung an der übrigen Anwendung. Die Einrichtung beschreibt
+[docs/GOOGLE.md](docs/GOOGLE.md); `npm run google:check` prüft sie Schritt für Schritt.
 
 ## Umgang mit Zugangsdaten
 
@@ -77,22 +80,25 @@ Verpflegungspauschalen 28 € / 14 € samt Kürzungen für gestellte Mahlzeiten
 
 ## Was noch fehlt
 
-1. **Google Drive und Gmail** — Service Account mit Domain-Wide Delegation. Die
-   Einrichtungsschritte stehen als Kommentar in `src/services/storage/googleDrive.js`.
-   Benötigt werden JSON-Key, `GOOGLE_IMPERSONATE_USER` und `DRIVE_ROOT_FOLDER_ID`.
-2. **Browser-Steuerung** — Claude Agent SDK mit Playwright gegen ein bestehendes
+1. **Browser-Steuerung** — Claude Agent SDK mit Playwright gegen ein bestehendes
    Chrome-Profil, damit vorhandene Anmeldungen erhalten bleiben. `agent.js` erstellt
    heute den Arbeitsplan; die Ausführung ist der nächste Schritt.
-3. **Spalten-Zuordnung von Hand** — der CSV-Parser erkennt gängige Exporte selbst,
+2. **Spalten-Zuordnung von Hand** — der CSV-Parser erkennt gängige Exporte selbst,
    eine Korrekturmöglichkeit in der Oberfläche fehlt noch.
-4. **Gruppen zusammenführen** — die Gruppierung arbeitet heuristisch. Ein manuelles
+3. **Gruppen zusammenführen** — die Gruppierung arbeitet heuristisch. Ein manuelles
    Verschmelzen und Umbenennen mit dauerhaften Regeln steht aus.
+
+Die Google-Anbindung wurde gegen einen Testserver geprüft, der die Google-APIs
+nachbildet und die JWT-Signatur echt verifiziert — nicht gegen ein reales
+Workspace-Konto. Der erste Lauf mit echten Zugangsdaten sollte deshalb mit
+`npm run google:check` beginnen.
 
 ## Entwicklung
 
 ```bash
-npm run dev      # Server mit automatischem Neustart
-npm run seed     # Vorlagen und Beispiel-Kürzel (mehrfach ausführbar)
+npm run dev           # Server mit automatischem Neustart
+npm run seed          # Vorlagen und Beispiel-Kürzel (mehrfach ausführbar)
+npm run google:check  # Google-Einrichtung prüfen
 ```
 
 Die Daten liegen unter `data/` (SQLite, Ablage, Postausgang) und sind nicht versioniert.
