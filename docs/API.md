@@ -22,7 +22,7 @@ Alle Endpunkte liefern JSON. Fehler kommen als `{ "fehler": "…" }` mit Status 
 | DELETE | `/api/tasks/:id` | Aufgabe löschen |
 | POST | `/api/periods/:id/als-vorlage` | Aktuelle Liste als Vorlage sichern |
 | POST | `/api/periods/:id/ki/aufgaben` | `{prompt, modus: "ersetzen"\|"ergaenzen"}` — erledigte Aufgaben bleiben erhalten |
-| POST | `/api/tasks/:id/ki/lauf` | Automatisierung dieser Aufgabe starten |
+| POST | `/api/tasks/:id/ki/lauf` | Automatisierung starten. Antwortet als `text/event-stream`: je Schritt ein `data:`-Objekt `{art, text, zeit}`, zum Schluss `{art:"ergebnis", status, hinweis, schritte, fehlerzahl, belege}`. |
 
 ## Dateien
 | Methode | Pfad | Zweck |

@@ -3,9 +3,9 @@
 Webanwendung zur Vorbereitung der monatlichen Buchhaltung: Aufgabenliste mit KI-Unterstützung,
 Belegablage, Bankabgleich, Erstellung von Eigenbelegen und ein nachvollziehbares Logbuch.
 
-**Stand:** Oberfläche, Datenmodell, Fachlogik sowie die Anbindung an Google Drive und
-Gmail sind fertig und getestet. Die Browser-Steuerung fehlt noch — siehe
-[Was noch fehlt](#was-noch-fehlt).
+**Stand:** Vollständig in den Grundzügen — Oberfläche, Datenmodell, Fachlogik,
+Anbindung an Google Drive und Gmail sowie die KI-gesteuerte Belegbeschaffung im
+Browser. Was noch offen ist, steht unter [Was noch fehlt](#was-noch-fehlt).
 
 ## Schnellstart
 
@@ -25,6 +25,7 @@ Beispielantworten. Ohne `VAULT_PASSPHRASE` werden keine Passwörter angenommen.
 |---|---|
 | **Aufgaben** | Liste je Zeitraum, in beliebiger Reihenfolge anspringbar. Erstellen und Ändern per KI-Prompt oder von Hand. Je Aufgabe: Status, hochgeladene Daten, eigener KI-Prompt, Zugangsdaten. |
 | **Ablage** | Jede Datei landet unter `Buchhaltung/<Jahr>/<MM Monat>/<Aufgabe>/`. Die Übersicht in der Oberfläche ist virtuell — die Wahrheit liegt im Ablage-Backend. |
+| **Belegbeschaffung** | Zu jeder Aufgabe kann die KI einen echten Chrome steuern: im Portal anmelden, Belege herunterladen, ablegen. Fortschritt läuft live mit. Siehe [docs/BROWSER.md](docs/BROWSER.md). |
 | **Bankabgleich** | CSV-Import mit automatischer Erkennung von Trennzeichen, Spalten und deutschen Zahlenformaten. Buchungen werden zu Gruppen zusammengefasst und den vorhandenen Belegen gegenübergestellt: Anzahl, Summe, Belegsumme, Differenz. |
 | **Beleganfragen** | Ein Kürzel an einer Buchung (z. B. `az`) verschickt eine Mail an `az@lexaid.net` mit der Bitte, den Beleg an `accounting@lexaid.net` zu senden. Jede Anfrage bekommt ein Ticket, das im Betreff mitläuft. |
 | **Logbuch** | Append-only. Jede Anfrage und jeder KI-Lauf wird mit vollständigem Verlauf festgehalten. Die Erledigung wird im Postfach anhand des Tickets geprüft; ein eingegangener Beleg landet automatisch in der Ablage und wird im Bankabgleich gegengerechnet. |
@@ -43,7 +44,8 @@ src/services/
    docgen.js         Bewirtungsbeleg und Spesenabrechnung als PDF, Zusammenführung
    steuerregeln.js   Steuerliche Kennzahlen an einer Stelle
    vault.js          Zugangsdaten, AES-256-GCM
-   agent.js          Automatisierung einer einzelnen Aufgabe
+   agent.js          Agentenschleife für die Automatisierung einer Aufgabe
+   browser/          Chrome-Steuerung und Werkzeugsatz des Agenten
    logbook.js        Logbuch, Beleganfragen, Erledigungsprüfung
    bank/csv.js       CSV-Parser für Kontoauszüge
    bank/grouping.js  Gruppenbildung und Belegabgleich
@@ -70,6 +72,10 @@ Portal-Logins sind das größte Risiko des Systems. Deshalb gilt:
   wird sie erst unmittelbar im Anmeldeformular.
 - Zugänge mit Zwei-Faktor-Authentifizierung werden als solche markiert. Ein KI-Lauf
   bricht dort mit dem Hinweis auf manuellen Eingriff ab, statt still zu scheitern.
+- Der vom Agenten gesteuerte Chrome läuft ohne eigenen Passwortmanager, ohne
+  Autofill und ohne Sync — sonst würde er die Portal-Zugangsdaten mitschneiden.
+- Der Agent erreicht nur die Domains der hinterlegten Zugänge. Alles andere wird
+  abgewiesen, bevor der Browser navigiert.
 
 ## Steuerliche Kennzahlen
 
@@ -80,18 +86,19 @@ Verpflegungspauschalen 28 € / 14 € samt Kürzungen für gestellte Mahlzeiten
 
 ## Was noch fehlt
 
-1. **Browser-Steuerung** — Claude Agent SDK mit Playwright gegen ein bestehendes
-   Chrome-Profil, damit vorhandene Anmeldungen erhalten bleiben. `agent.js` erstellt
-   heute den Arbeitsplan; die Ausführung ist der nächste Schritt.
-2. **Spalten-Zuordnung von Hand** — der CSV-Parser erkennt gängige Exporte selbst,
+1. **Spalten-Zuordnung von Hand** — der CSV-Parser erkennt gängige Exporte selbst,
    eine Korrekturmöglichkeit in der Oberfläche fehlt noch.
-3. **Gruppen zusammenführen** — die Gruppierung arbeitet heuristisch. Ein manuelles
+2. **Gruppen zusammenführen** — die Gruppierung arbeitet heuristisch. Ein manuelles
    Verschmelzen und Umbenennen mit dauerhaften Regeln steht aus.
+3. **Zeitplan** — Läufe werden heute von Hand gestartet. Ein wiederkehrender
+   Monatslauf wäre der nächste sinnvolle Ausbau.
 
-Die Google-Anbindung wurde gegen einen Testserver geprüft, der die Google-APIs
-nachbildet und die JWT-Signatur echt verifiziert — nicht gegen ein reales
-Workspace-Konto. Der erste Lauf mit echten Zugangsdaten sollte deshalb mit
-`npm run google:check` beginnen.
+Zwei Dinge sind gegen Nachbauten geprüft, nicht gegen die echten Gegenstellen:
+die Google-Anbindung gegen einen Testserver, der die APIs nachbildet und die
+JWT-Signatur echt verifiziert, und die Browser-Steuerung gegen ein nachgebautes
+Lieferantenportal mit einer skriptgesteuerten Modell-Attrappe. Der erste Lauf
+mit echten Zugangsdaten sollte deshalb mit `npm run google:check` beginnen und
+für die Belegbeschaffung mit einem unkritischen Portal starten.
 
 ## Entwicklung
 

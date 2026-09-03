@@ -166,7 +166,28 @@ router.post('/api/periods/:id/ki/aufgaben', async (req, res) => {
   json(res, { angelegt, unveraendert: behalten.length, ki: aiEnabled, aufgaben: ladeAufgaben(periodId) });
 });
 
-router.post('/api/tasks/:id/ki/lauf', async (req, res) => json(res, await laufeAufgabe(Number(req.params.id))));
+// Ein Browser-Lauf dauert Minuten. Der Fortschritt wird deshalb als
+// Ereignisstrom gesendet, statt die Oberflaeche blind warten zu lassen.
+router.post('/api/tasks/:id/ki/lauf', async (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  const sende = (daten) => res.write(`data: ${JSON.stringify(daten)}\n\n`);
+
+  try {
+    const ergebnis = await laufeAufgabe(
+      Number(req.params.id),
+      (art, text) => sende({ art, text, zeit: new Date().toISOString() }),
+    );
+    sende({ art: 'ergebnis', ...ergebnis });
+  } catch (err) {
+    sende({ art: 'fehler', text: err.message });
+  }
+  res.end();
+});
 
 // --- Dateien ----------------------------------------------------------------
 

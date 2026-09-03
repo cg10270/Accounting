@@ -41,6 +41,20 @@ export const config = {
   driveUploadApi: process.env.GOOGLE_DRIVE_UPLOAD_API || 'https://www.googleapis.com/upload/drive/v3',
   gmailApi: process.env.GOOGLE_GMAIL_API || 'https://gmail.googleapis.com/gmail/v1',
 
+  // ---- Browser-Steuerung ----
+  // Bestehendes Chrome ueber das Debug-Protokoll uebernehmen (Anmeldungen
+  // bleiben erhalten), sonst eigenes Profilverzeichnis starten.
+  chromeCdpUrl: process.env.CHROME_CDP_URL || '',
+  chromeProfilDir: process.env.CHROME_PROFIL_DIR || path.join(ROOT, 'data', 'chrome-profil'),
+  chromeExecutable: process.env.CHROME_EXECUTABLE || '',
+  browserSichtbar: process.env.BROWSER_SICHTBAR !== '0',
+  // Harte Obergrenzen: ein Agent mit angemeldetem Browser darf nicht endlos laufen.
+  agentMaxSchritte: Number(process.env.AGENT_MAX_SCHRITTE || 40),
+  agentMaxSekunden: Number(process.env.AGENT_MAX_SEKUNDEN || 600),
+  // Zusaetzlich erlaubte Domains, kommagetrennt. Die Domains der hinterlegten
+  // Zugaenge sind immer erlaubt.
+  agentZusatzDomains: (process.env.AGENT_ERLAUBTE_DOMAINS || '').split(',').map((d) => d.trim()).filter(Boolean),
+
   mailDriver: process.env.MAIL_DRIVER || 'mock',
   outboxDir: path.join(ROOT, 'data', 'outbox'),
   mailFrom: process.env.MAIL_FROM || 'accounting@lexaid.net',

@@ -11,6 +11,10 @@ const zustand = {
   aufgabeId: null,
   status: null,
   gruppen: [],
+  // Protokoll des letzten KI-Laufs, damit es ein Neuzeichnen der
+  // Detailansicht ueberlebt - sonst verschwindet das Ergebnis genau dann,
+  // wenn der Lauf fertig ist.
+  lauf: { taskId: null, schritte: [] },
 };
 
 // --- Hilfen -----------------------------------------------------------------
@@ -199,6 +203,22 @@ function zeichneAufgabendetail() {
     </div>`;
 
   verdrahteAufgabendetail(a);
+
+  // Protokoll eines Laufs zu dieser Aufgabe wieder einsetzen
+  if (zustand.lauf.taskId === a.id && zustand.lauf.schritte.length) {
+    zeichneLaufprotokoll(a.id);
+  }
+}
+
+function zeichneLaufprotokoll(taskId) {
+  $('#d-ki-ergebnis').innerHTML = `
+    <div class="karte" style="margin-top:18px">
+      <h2>KI-Lauf</h2>
+      <div class="inhalt"><ul class="lauf-schritte" id="lauf-schritte"></ul></div>
+    </div>`;
+  const liste = $('#lauf-schritte');
+  for (const e of zustand.lauf.schritte) zeigeLaufschritt(liste, e, false);
+  return liste;
 }
 
 function verdrahteAufgabendetail(a) {
@@ -221,16 +241,31 @@ function verdrahteAufgabendetail(a) {
   $('#d-ki-lauf').onclick = async (e) => {
     e.target.disabled = true;
     e.target.textContent = 'Läuft …';
+    zustand.lauf = { taskId: a.id, schritte: [] };
+    const liste = zeichneLaufprotokoll(a.id);
+
+    // Der Lauf kommt als Ereignisstrom - jeder Schritt wird sofort angezeigt.
     try {
-      const r = await senden(`/api/tasks/${a.id}/ki/lauf`, {});
-      $('#d-ki-ergebnis').innerHTML = `
-        <div class="karte" style="margin-top:18px">
-          <h2>KI-Lauf ${esc(r.ticket)}</h2>
-          <div class="inhalt">
-            <p class="klein-text leise" style="margin-top:0">${esc(r.hinweis)}<br>Zielordner: <code>${esc(r.zielordner)}</code></p>
-            <pre class="klein-text" style="white-space:pre-wrap;margin:0">${esc(r.plan)}</pre>
-          </div>
-        </div>`;
+      const antwort = await fetch(`/api/tasks/${a.id}/ki/lauf`, { method: 'POST' });
+      if (!antwort.ok) throw new Error(`Fehler ${antwort.status}`);
+      const leser = antwort.body.getReader();
+      const dekoder = new TextDecoder();
+      let puffer = '';
+
+      while (true) {
+        const { value, done } = await leser.read();
+        if (done) break;
+        puffer += dekoder.decode(value, { stream: true });
+        const teile = puffer.split('\n\n');
+        puffer = teile.pop();
+        for (const teil of teile) {
+          const zeile = teil.replace(/^data: /, '').trim();
+          if (!zeile) continue;
+          zeigeLaufschritt(liste, JSON.parse(zeile));
+          liste.lastElementChild?.scrollIntoView({ block: 'nearest' });
+        }
+      }
+      await ladeAufgaben();
       await ladeLogbuch();
     } catch (err) { fehlerBehandeln(err); }
     e.target.disabled = false;
@@ -281,6 +316,29 @@ function verdrahteAufgabendetail(a) {
       catch (err) { fehlerBehandeln(err); }
     };
   });
+}
+
+const SCHRITT_SYMBOL = {
+  gestartet: '▸', browser: '▸', werkzeug: '·', 'überlegung': '💭',
+  'beleg abgelegt': '✓', fehler: '!', abgebrochen: '!', abgeschlossen: '■',
+};
+
+function zeigeLaufschritt(liste, e, merken = true) {
+  if (merken) zustand.lauf.schritte.push(e);
+  const li = document.createElement('li');
+  if (e.art === 'ergebnis') {
+    const belege = (e.belege || []).map((b) => `<li>${esc(b.filename)}</li>`).join('');
+    li.className = 'ergebnis';
+    li.innerHTML = `
+      <strong>Ergebnis (${esc(e.status)})</strong> — Ticket ${esc(e.ticket)}, ${e.schritte ?? 0} Schritte<br>
+      ${esc(e.hinweis || '')}
+      ${belege ? `<ul style="margin:6px 0 0">${belege}</ul>` : '<div class="leise">Keine Belege abgelegt.</div>'}`;
+  } else {
+    li.className = `art${String(e.art).replace(/[^a-zä]/gi, '')}`;
+    li.innerHTML = `<span class="symbol">${SCHRITT_SYMBOL[e.art] || '·'}</span>
+      <span><span class="leise">${esc(e.art)}</span> ${esc(e.text || '')}</span>`;
+  }
+  liste.append(li);
 }
 
 async function ladeDateienHoch(taskId, dateien) {

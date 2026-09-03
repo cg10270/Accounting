@@ -156,3 +156,14 @@ details.gruppe > summary:hover { background: var(--flaeche-2); }
 #hinweis.fehler { background: var(--rot-weich); color: var(--rot); border-color: transparent; }
 #hinweis.erfolg { background: var(--gruen-weich); color: var(--gruen); border-color: transparent; }
 .leer { padding: 28px; text-align: center; color: var(--text-leise); }
+
+/* --- Fortschritt eines KI-Laufs --- */
+.lauf-schritte { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow-y: auto; font-size: 12.5px; }
+.lauf-schritte li { display: flex; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--rand); }
+.lauf-schritte li:last-child { border-bottom: 0; }
+.lauf-schritte .symbol { width: 14px; flex: 0 0 auto; color: var(--text-leise); }
+.lauf-schritte .artwerkzeug { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.lauf-schritte .artüberlegung { color: var(--text-leise); font-style: italic; }
+.lauf-schritte .artfehler .symbol, .lauf-schritte .artabgebrochen .symbol { color: var(--rot); }
+.lauf-schritte .artbelegabgelegt .symbol { color: var(--gruen); }
+.lauf-schritte li.ergebnis { display: block; margin-top: 8px; padding: 10px; border-radius: 7px; background: var(--flaeche-2); border: 0; }
