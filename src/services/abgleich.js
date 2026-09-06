@@ -200,10 +200,43 @@ export function uebersicht(periodId) {
   ).filter((b) => !zugeordnet.has(b.id));
 
   const summe = (liste, feld) => liste.reduce((s, x) => s + Math.abs(Number(x[feld] || 0)), 0);
+
+  // Nach Firma gruppieren: bei Sammelrechnungen und vielen Kleinbetraegen -
+  // Meta, OpenAI, Anthropic - findet der Abgleich Buchung und Beleg oft nicht
+  // paarweise zusammen. Dann hilft die Gegenueberstellung der Summen: stimmt
+  // sie, ist der Monat fuer diese Firma vollstaendig, auch ohne Einzelpaare.
+  const gruppen = new Map();
+  const gruppe = (name) => {
+    const schluessel = name || 'ohne Namen';
+    if (!gruppen.has(schluessel)) {
+      gruppen.set(schluessel, { marke: schluessel, buchungen: [], belege: [] });
+    }
+    return gruppen.get(schluessel);
+  };
+  for (const tx of offen) gruppe(tx.anzeige).buchungen.push(tx);
+  for (const b of ohneBuchung) gruppe(b.marke || vergleichsname(b.aussteller || '')).belege.push(b);
+
+  const gruppenliste = [...gruppen.values()]
+    .map((g) => {
+      const bank = summe(g.buchungen, 'amount_cents');
+      const belege = summe(g.belege, 'amount_cents');
+      return {
+        ...g,
+        bank_cents: bank,
+        belege_cents: belege,
+        // Positiv heisst: es fehlen Belege. Negativ: es liegen mehr Belege vor
+        // als die Bank hergibt - etwa weil sie schon einer Buchung zugeordnet
+        // sind oder anders bezahlt wurden.
+        differenz_cents: bank - belege,
+      };
+    })
+    .sort((a, b) => a.marke.localeCompare(b.marke, 'de'));
+
   return {
     offen,
     erledigt,
     ohneBuchung,
+    gruppen: gruppenliste,
     zahlen: {
       buchungen: buchungen.length,
       ausgaben: offen.length + erledigt.length,

@@ -553,42 +553,70 @@ function zeichneAbgleich() {
     `${z.buchungen} Buchungen: ${z.ausgaben} Ausgaben · ${z.offen} davon ohne Beleg (${euro(z.offen_cents)}) · `
     + `${z.erledigt} erledigt · ${z.eingaenge} Eingänge (${euro(z.eingaenge_cents)}, kein Beleg nötig)`;
   $('#ab-offen-zahl').textContent = z.offen ? `${z.offen} · ${euro(z.offen_cents)}` : 'nichts offen';
-  $('#ab-ohne-zahl').textContent = z.belege_ohne_buchung
-    ? `${z.belege_ohne_buchung}${z.belege_ohne_betrag ? ` · ${z.belege_ohne_betrag} ohne gelesenen Betrag` : ''}`
-    : '';
+
+  const zeileOffen = (tx) => `
+    <tr>
+      <td class="klein-text">${datumDe(tx.booking_date)}</td>
+      <td class="klein-text">
+        ${esc(tx.counterparty || '')}
+        ${tx.purpose ? `<br><span class="leise">Verwendungszweck: ${esc(tx.purpose)}</span>` : ''}
+        ${tx.angefragt ? `<br><span class="leise">angefragt bei ${esc(tx.angefragt.recipient)} · ${esc(tx.angefragt.status)}</span>` : ''}
+      </td>
+      <td class="rechts">${euro(tx.amount_cents)}</td>
+      <td class="klein-text">
+        <input class="ab-kuerzel klein-text" data-id="${tx.id}" style="width:70px"
+               placeholder="Kürzel" value="${esc(tx.tag || '')}">
+        <button class="knopf leise klein ab-anfordern" data-id="${tx.id}">anfordern</button>
+        <label class="knopf leise klein" style="cursor:pointer">Beleg…
+          <input type="file" class="ab-datei" data-id="${tx.id}" hidden multiple>
+        </label>
+      </td>
+    </tr>`;
+
+  // Je Firma: die offenen Buchungen einzeln, darunter die Belege dieser Firma,
+  // die keiner Buchung zugeordnet werden konnten, und die Differenz der Summen.
+  const gruppenKopf = (g) => {
+    const stimmt = Math.abs(g.differenz_cents) <= 100;
+    const bilanz = g.belege.length
+      ? `Bank ${euro(g.bank_cents)} · Belege ohne Zuordnung ${euro(g.belege_cents)} · `
+        + (stimmt ? 'Differenz ausgeglichen' : `Differenz ${euro(g.differenz_cents)}`)
+      : `Bank ${euro(g.bank_cents)} · kein Beleg vorhanden`;
+    return `
+      <tr style="background:var(--flaeche-2)">
+        <td colspan="4" class="klein-text">
+          <strong>${esc(g.marke)}</strong>
+          <span class="leise"> · ${g.buchungen.length} Buchung(en) · </span>
+          <span style="color:var(${g.belege.length && stimmt ? '--gruen' : '--text-leise'})">${esc(bilanz)}</span>
+        </td>
+      </tr>`;
+  };
+
+  const gruppenBelege = (g) => (!g.belege.length ? '' : `
+      <tr><td></td><td colspan="3" class="klein-text leise">
+        Vorhandene Belege ohne Zuordnung: ${g.belege.map((b) => esc(b.filename)).join(', ')}
+      </td></tr>`);
+
+  const gruppenMitBuchungen = (d.gruppen || []).filter((g) => g.buchungen.length);
 
   $('#ab-offen').innerHTML = !d.offen.length
     ? '<div class="leer">Zu jeder Buchung liegt ein Beleg vor.</div>'
     : `<table>
       <thead><tr>
-        <th style="width:90px">Datum</th><th>Firma / Verwendungszweck</th>
+        <th style="width:90px">Datum</th><th>Gegenpartei / Verwendungszweck</th>
         <th style="width:110px" class="rechts">Betrag</th><th style="width:290px">Beleg besorgen</th>
       </tr></thead>
-      <tbody>${d.offen.map((tx) => `
-        <tr>
-          <td class="klein-text">${datumDe(tx.booking_date)}</td>
-          <td class="klein-text">
-            <strong>${esc(tx.anzeige || tx.counterparty)}</strong>
-            ${tx.counterparty && tx.counterparty.toLowerCase() !== String(tx.anzeige || '').toLowerCase()
-              ? `<span class="leise"> · ${esc(tx.counterparty)}</span>` : ''}
-            ${tx.purpose ? `<br><span class="leise">Verwendungszweck: ${esc(tx.purpose)}</span>` : ''}
-            ${tx.angefragt ? `<br><span class="leise">angefragt bei ${esc(tx.angefragt.recipient)} · ${esc(tx.angefragt.status)}</span>` : ''}
-          </td>
-          <td class="rechts">${euro(tx.amount_cents)}</td>
-          <td class="klein-text">
-            <input class="ab-kuerzel klein-text" data-id="${tx.id}" style="width:70px"
-                   placeholder="Kürzel" value="${esc(tx.tag || '')}">
-            <button class="knopf leise klein ab-anfordern" data-id="${tx.id}">anfordern</button>
-            <label class="knopf leise klein" style="cursor:pointer">Beleg…
-              <input type="file" class="ab-datei" data-id="${tx.id}" hidden multiple>
-            </label>
-          </td>
-        </tr>`).join('')}</tbody>
+      <tbody>${gruppenMitBuchungen.map((g) =>
+        gruppenKopf(g) + g.buchungen.map(zeileOffen).join('') + gruppenBelege(g)).join('')}</tbody>
     </table>`;
 
-  $('#ab-ohne').innerHTML = !d.ohneBuchung.length
+  const inGruppe = new Set(gruppenMitBuchungen.flatMap((g) => g.belege.map((b) => b.id)));
+  const restBelege = d.ohneBuchung.filter((b) => !inGruppe.has(b.id));
+  $('#ab-ohne-zahl').textContent = restBelege.length
+    ? `${restBelege.length}${z.belege_ohne_betrag ? ` · ${z.belege_ohne_betrag} ohne gelesenen Betrag` : ''}`
+    : '';
+  $('#ab-ohne').innerHTML = !restBelege.length
     ? '<div class="leer">Jeder Beleg gehört zu einer Buchung.</div>'
-    : `<table><tbody>${d.ohneBuchung.map((b) => `
+    : `<table><tbody>${restBelege.map((b) => `
         <tr><td class="klein-text">${belegZeile(b)}
           ${b.analyse_fehler ? `<br><span class="leise">nicht ausgelesen: ${esc(b.analyse_fehler)}</span>` : ''}
         </td></tr>`).join('')}</tbody></table>`;
@@ -693,12 +721,23 @@ $('#ab-holen').onclick = async (e) => {
 
 // Die offene Liste als Text - zum Weitergeben an Kollegen oder die Kanzlei.
 $('#ab-kopieren').onclick = async () => {
+  const gruppen = (zustand.abgleich?.gruppen || []).filter((g) => g.buchungen.length);
   const offen = zustand.abgleich?.offen || [];
   if (!offen.length) return melde('Nichts offen.', 'erfolg');
-  const zeilen = [['Datum', 'Firma', 'Gegenpartei', 'Verwendungszweck', 'Betrag'].join('\t')];
-  for (const tx of offen) {
-    zeilen.push([datumDe(tx.booking_date), tx.anzeige || '', tx.counterparty || '',
-      (tx.purpose || '').replace(/\s+/g, ' '), (tx.amount_cents / 100).toFixed(2)].join('\t'));
+
+  // Dieselbe Reihenfolge wie in der Anzeige, damit die Liste wiedererkennbar
+  // ist: nach Firma sortiert, darunter die einzelnen Buchungen.
+  const zeilen = [['Firma', 'Datum', 'Gegenpartei', 'Verwendungszweck', 'Betrag'].join('\t')];
+  for (const g of gruppen) {
+    for (const tx of g.buchungen) {
+      zeilen.push([g.marke, datumDe(tx.booking_date), tx.counterparty || '',
+        (tx.purpose || '').replace(/\s+/g, ' '), (tx.amount_cents / 100).toFixed(2)].join('\t'));
+    }
+    zeilen.push([`${g.marke} — Summe Bank`, '', '', '', (g.bank_cents / 100).toFixed(2)].join('\t'));
+    if (g.belege.length) {
+      zeilen.push([`${g.marke} — Summe vorhandener Belege`, '', '', '',
+        (g.belege_cents / 100).toFixed(2)].join('\t'));
+    }
   }
   const text = zeilen.join('\n');
   try {

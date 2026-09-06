@@ -205,3 +205,37 @@ describe('Verstümmelte Antworten des Modells', () => {
     assert.match(r.hinweis, /weder Aussteller noch Betrag/);
   });
 });
+
+describe('Gruppierung der offenen Buchungen', () => {
+  const periodId = (() => {
+    run("INSERT INTO periods (year, month, label) VALUES (2026, 10, 'Oktober 2026')");
+    return get('SELECT id FROM periods WHERE year = 2026 AND month = 10').id;
+  })();
+  run("INSERT INTO bank_statements (period_id, filename) VALUES (?, 'okt.csv')", periodId);
+  const statementId = get('SELECT id FROM bank_statements WHERE period_id = ?', periodId).id;
+
+  const buchung = (counterparty, cents) =>
+    run(`INSERT INTO bank_tx (statement_id, period_id, booking_date, counterparty, purpose, amount_cents)
+         VALUES (?, ?, '2026-10-15', ?, '', ?)`, statementId, periodId, counterparty, cents);
+
+  test('gleiche Firma steht zusammen, alphabetisch, Buchungen einzeln', () => {
+    buchung('OPENAI', -4410);
+    buchung('OPENAI', -4420);
+    buchung('FACEBK ADS', -10000);
+    // Ein Beleg der Firma, den kein Betrag einer Buchung trifft.
+    run(`INSERT INTO artifacts (period_id, filename, marke, amount_cents, doc_date)
+         VALUES (?, 'sammelrechnung.pdf', 'openai', 9000, '2026-10-14')`, periodId);
+
+    markiereBuchungen(periodId);
+    gleicheAb(periodId);
+    const sicht = uebersicht(periodId);
+    const namen = sicht.gruppen.filter((g) => g.buchungen.length).map((g) => g.marke);
+    assert.deepEqual(namen, ['meta', 'openai']);
+
+    const openai = sicht.gruppen.find((g) => g.marke === 'openai');
+    assert.equal(openai.buchungen.length, 2);
+    assert.equal(openai.bank_cents, 8830);
+    assert.equal(openai.belege_cents, 9000);
+    assert.equal(openai.differenz_cents, -170);
+  });
+});
