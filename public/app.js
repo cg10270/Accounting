@@ -535,8 +535,11 @@ async function ladeAbgleich() {
 }
 
 function belegZeile(b) {
+  const betrag = b.beleg_betrag != null ? b.beleg_betrag : b.amount_cents;
   const teile = [b.aussteller || b.beleg_marke || b.marke, b.rechnungsnummer && `Nr. ${b.rechnungsnummer}`,
-    b.beleg_betrag != null ? euro(b.beleg_betrag) : (b.amount_cents != null ? euro(b.amount_cents) : 'ohne Betrag'),
+    betrag != null ? euro(betrag) : 'ohne Betrag',
+    // Bei fremder Waehrung ist der Betrag oben nicht der abgebuchte.
+    b.waehrung && b.waehrung !== 'EUR' ? `Rechnung in ${b.waehrung}` : '',
     datumDe(b.doc_date)].filter(Boolean);
   return `<a href="/api/dateien/${b.artifact_id || b.id}/inhalt" target="_blank">${esc(b.filename)}</a>
           <span class="leise"> · ${esc(teile.join(' · '))}</span>`;

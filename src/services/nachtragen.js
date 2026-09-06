@@ -19,6 +19,9 @@ const liegtLokal = (a) => a.storage_id === a.storage_path;
 
 const lokalerPfad = (a) => path.join(config.localStorageDir, a.storage_path);
 
+// Erkennt Reste einer verstuemmelten Werkzeugantwort in gespeicherten Feldern.
+const MUELL = /antml|parameter\s+name=|[\r\n<>]/i;
+
 /**
  * @param {number|null} periodId  null = alle Zeitraeume
  */
@@ -53,11 +56,20 @@ export async function nachtragen(periodId = null, { verschieben = true, auslesen
       }
     }
 
-    // 2 - Belege ohne Betrag auslesen. Tabellen und Kontoauszuege sind keine
-    // Rechnungen; ergaenzeBelegdaten sortiert sie am Dateityp aus.
-    if (auslesen && a.amount_cents == null) {
+    // Bruchstuecke einer verstuemmelten Werkzeugantwort standen frueher als
+    // Aussteller in der Datenbank. Solche Felder werden geleert, damit das
+    // erneute Auslesen sie sauber fuellt.
+    if (MUELL.test(a.aussteller) || MUELL.test(a.marke) || MUELL.test(a.doc_date)) {
+      run("UPDATE artifacts SET aussteller = '', marke = '', doc_date = NULL WHERE id = ?", a.id);
+      a.aussteller = ''; a.marke = ''; a.doc_date = null;
+    }
+
+    // 2 - auslesen, was noch keinen Betrag hat oder dessen Waehrung fehlt.
+    // Ohne Waehrung ist ein Betrag nicht vergleichbar. Tabellen und
+    // Kontoauszuege sortiert ergaenzeBelegdaten am Dateityp aus.
+    if (auslesen && (a.amount_cents == null || !a.waehrung)) {
       try {
-        const aktuell = get('SELECT * FROM artifacts WHERE id = ?', a.id);
+          const aktuell = get('SELECT * FROM artifacts WHERE id = ?', a.id);
         const buffer = lesen() ?? await storage.getFile({ path: aktuell.storage_path, id: aktuell.storage_id });
         const ergebnis = await ergaenzeBelegdaten(a.id, { buffer, mime: a.mime, filename: a.filename });
         if (ergebnis.ki) bericht.ausgelesen++;

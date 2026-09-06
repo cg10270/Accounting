@@ -19,9 +19,26 @@ export function toleranz(cents) {
   return Math.min(500, Math.max(2, Math.round(Math.abs(cents) * 0.01)));
 }
 
+// Rechnungen in fremder Waehrung nennen einen ganz anderen Betrag als der
+// Kontoauszug: 47,60 USD werden zu rund 44 Euro abgebucht. Der Wechselkurs
+// samt Auslandsentgelt liegt erfahrungsgemaess in dieser Spanne. Weil das
+// deutlich unschaerfer ist als ein Betragsvergleich in Euro, zaehlt ein
+// solcher Treffer weniger und wird in der Begruendung benannt.
+const FREMD_MIN = 0.75;
+const FREMD_MAX = 1.05;
+
 export function betragPasst(a, b) {
   const diff = Math.abs(Math.abs(a) - Math.abs(b));
   return diff <= toleranz(a);
+}
+
+/** Kann der Buchungsbetrag die Umrechnung des Belegbetrags sein? */
+export function umrechnungMoeglich(buchungCents, belegCents) {
+  const buchung = Math.abs(buchungCents);
+  const beleg = Math.abs(belegCents);
+  if (!buchung || !beleg) return false;
+  const kurs = buchung / beleg;
+  return kurs >= FREMD_MIN && kurs <= FREMD_MAX;
 }
 
 // Rechnungsnummern stehen im Verwendungszweck mal mit, mal ohne Trennzeichen.
@@ -57,11 +74,16 @@ export function bewerte(tx, beleg) {
   else if (txName.includes(belegName) || belegName.includes(txName)) { punkte += 35; gruende.push(`Firma ähnlich: ${belegName} / ${txName}`); }
   else return null;
 
+  const fremdwaehrung = beleg.waehrung && beleg.waehrung !== (tx.currency || 'EUR');
   const diff = Math.abs(Math.abs(tx.amount_cents) - Math.abs(beleg.amount_cents));
   if (diff === 0) { punkte += 50; gruende.push('Betrag exakt'); }
   else if (betragPasst(tx.amount_cents, beleg.amount_cents)) {
     punkte += 30;
     gruende.push(`Betrag ${(diff / 100).toFixed(2)} € abweichend (Umrechnung/Rundung)`);
+  } else if (fremdwaehrung && umrechnungMoeglich(tx.amount_cents, beleg.amount_cents)) {
+    punkte += 15;
+    gruende.push(`Rechnung lautet auf ${beleg.waehrung} `
+      + `${(Math.abs(beleg.amount_cents) / 100).toFixed(2)} - Betrag umgerechnet, bitte prüfen`);
   } else return null;
 
   if (nummerImText(beleg.rechnungsnummer, `${tx.purpose} ${tx.counterparty}`)) {
@@ -75,7 +97,12 @@ export function bewerte(tx, beleg) {
     gruende.push(`${abstand} Tage zwischen Beleg und Buchung`);
   }
 
-  return { punkte, begruendung: gruende.join(' · '), exakt: diff === 0 };
+  // Ein umgerechneter Betrag allein traegt nicht: ohne zeitliche Naehe koennte
+  // jede Rechnung derselben Firma gemeint sein.
+  if (fremdwaehrung && diff !== 0 && !betragPasst(tx.amount_cents, beleg.amount_cents)
+      && (abstand == null || abstand > 20)) return null;
+
+  return { punkte, begruendung: gruende.join(' · '), exakt: diff === 0, unsicher: punkte < 70 };
 }
 
 /**
@@ -127,7 +154,7 @@ export function gleicheAb(periodId) {
 
 const zuordnungenJoin = `
   SELECT z.*, a.filename, a.aussteller, a.marke AS beleg_marke, a.rechnungsnummer,
-         a.amount_cents AS beleg_betrag, a.doc_date, a.web_url
+         a.amount_cents AS beleg_betrag, a.waehrung, a.doc_date, a.web_url
     FROM belegzuordnung z JOIN artifacts a ON a.id = z.artifact_id
    WHERE z.period_id = ? AND z.status != 'verworfen'`;
 
@@ -168,7 +195,7 @@ export function uebersicht(periodId) {
 
   const zugeordnet = new Set(zuordnungen.map((z) => z.artifact_id));
   const ohneBuchung = all(
-    `SELECT id, filename, aussteller, marke, rechnungsnummer, amount_cents, doc_date, analyse_fehler
+    `SELECT id, filename, aussteller, marke, rechnungsnummer, amount_cents, waehrung, doc_date, analyse_fehler
        FROM artifacts WHERE period_id = ? ORDER BY doc_date, id`, pid,
   ).filter((b) => !zugeordnet.has(b.id));
 

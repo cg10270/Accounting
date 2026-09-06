@@ -279,6 +279,7 @@ for (const [tabelle, spalte, definition] of [
   ['artifacts', 'marke', "TEXT NOT NULL DEFAULT ''"],
   ['artifacts', 'aussteller', "TEXT NOT NULL DEFAULT ''"],
   ['artifacts', 'rechnungsnummer', "TEXT NOT NULL DEFAULT ''"],
+  ['artifacts', 'waehrung', "TEXT NOT NULL DEFAULT ''"],
   ['artifacts', 'analysiert_am', 'TEXT'],
   ['artifacts', 'analyse_fehler', "TEXT NOT NULL DEFAULT ''"],
   ['bank_tx', 'marke', "TEXT NOT NULL DEFAULT ''"],

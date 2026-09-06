@@ -244,7 +244,45 @@ export async function analysiereRechnung({ buffer, mime, filename, lieferanten =
   const block = response.content.find((b) => b.type === 'tool_use' && b.name === werkzeug.name);
   if (!block) throw new Error('Der Beleg konnte nicht ausgelesen werden.');
 
-  const daten = block.input;
-  const gewaehlt = daten.lieferant ? lieferanten.find((l) => l.name === daten.lieferant) : null;
-  return { ki: true, ...daten, lieferant: gewaehlt ? { id: gewaehlt.id, name: gewaehlt.name } : null };
+  return pruefe(block.input, lieferanten);
+}
+
+// Bei einem unlesbaren Bild kann das Modell die Werkzeugantwort verstuemmeln -
+// dann standen Bruchstuecke der Antwortstruktur als Aussteller in der
+// Datenbank. Solche Werte sind nie ein Firmenname, und ein Datum ist immer
+// JJJJ-MM-TT. Was die Pruefung nicht besteht, bleibt leer.
+const MUELL = /antml|parameter\s+name=|[\r\n<>]/i;
+const sauber = (wert, maxLaenge = 200) => {
+  const text = String(wert ?? '').trim();
+  if (!text || MUELL.test(text) || text.length > maxLaenge) return '';
+  return text;
+};
+const sauberesDatum = (wert) => (/^\d{4}-\d{2}-\d{2}$/.test(String(wert ?? '').trim()) ? String(wert).trim() : '');
+const ganzeZahl = (wert) => (Number.isSafeInteger(Number(wert)) ? Number(wert) : 0);
+
+export function pruefe(daten, lieferanten = []) {
+  const geprueft = {
+    lesbar: Boolean(daten.lesbar),
+    aussteller: sauber(daten.aussteller, 120),
+    rechnungsnummer: sauber(daten.rechnungsnummer, 60),
+    datum: sauberesDatum(daten.datum),
+    brutto_cents: ganzeZahl(daten.brutto_cents),
+    ust_cents: ganzeZahl(daten.ust_cents),
+    waehrung: /^[A-Za-z]{3}$/.test(String(daten.waehrung ?? '').trim())
+      ? String(daten.waehrung).trim().toUpperCase() : '',
+    leistung: sauber(daten.leistung, 200),
+    marke: sauber(daten.marke, 60),
+    begruendung: sauber(daten.begruendung, 300),
+  };
+
+  // Ohne Aussteller und ohne Betrag ist nichts gelesen worden - das sagen wir,
+  // statt ein halbes Ergebnis weiterzureichen.
+  if (!geprueft.aussteller && !geprueft.brutto_cents) {
+    return { ki: true, ...geprueft, lesbar: false, lieferant: null,
+      hinweis: 'Aus diesem Dokument liess sich weder Aussteller noch Betrag lesen.' };
+  }
+
+  const name = sauber(daten.lieferant, 120);
+  const gewaehlt = name ? lieferanten.find((l) => l.name === name) : null;
+  return { ki: true, ...geprueft, lieferant: gewaehlt ? { id: gewaehlt.id, name: gewaehlt.name } : null };
 }

@@ -58,6 +58,9 @@ export async function ergaenzeBelegdaten(artifactId, { buffer, mime, filename })
   if (!eintrag.vendor && daten.lieferant) neu.vendor = daten.lieferant.name;
   if (!eintrag.aussteller && daten.aussteller) neu.aussteller = daten.aussteller;
   if (!eintrag.rechnungsnummer && daten.rechnungsnummer) neu.rechnungsnummer = daten.rechnungsnummer;
+  // Ohne die Waehrung ist ein Betrag nicht vergleichbar: 47,60 USD sind rund
+  // 44 Euro, und genau daran scheiterte der Abgleich der OpenAI-Rechnungen.
+  if (daten.waehrung) neu.waehrung = daten.waehrung;
 
   // Die Marke ist der Name, unter dem Beleg und Buchung verglichen werden.
   // Die eigene Markenliste hat Vorrang - sie ist nachvollziehbar; die
@@ -82,6 +85,7 @@ export async function ergaenzeBelegdaten(artifactId, { buffer, mime, filename })
     ust_cents: daten.ust_cents,
     waehrung: daten.waehrung,
     marke: neu.marke ?? eintrag.marke,
+    waehrung: neu.waehrung ?? eintrag.waehrung,
     uebernommen: felder.filter((f) => f !== 'analyse_fehler'),
   };
 }

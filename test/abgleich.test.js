@@ -10,8 +10,9 @@ import path from 'node:path';
 process.env.DB_FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'buchhaltung-ab-')), 'test.sqlite');
 process.env.VAULT_PASSPHRASE = 'test-passphrase';
 
-const { bewerte, betragPasst, gleicheAb, uebersicht, markiereBuchungen } = await import('../src/services/abgleich.js');
+const { bewerte, betragPasst, umrechnungMoeglich, gleicheAb, uebersicht, markiereBuchungen } = await import('../src/services/abgleich.js');
 const { vergleichsname } = await import('../src/services/marken.js');
+const { pruefe } = await import('../src/services/beleganalyse.js');
 const { run, get, all } = await import('../src/db.js');
 
 const tx = (o) => ({ counterparty: '', purpose: '', booking_date: '2026-08-15', marke: '', ...o });
@@ -141,5 +142,66 @@ describe('Ein ganzer Monat', () => {
     assert.equal(get('SELECT status FROM belegzuordnung WHERE id = ?', z.id).status, 'verworfen');
     assert.equal(all(`SELECT z.id FROM belegzuordnung z JOIN bank_tx t ON t.id = z.tx_id
                        WHERE t.counterparty = 'FACEBK *ADS 4711' AND z.status = 'vorschlag'`).length, 0);
+  });
+});
+
+describe('Rechnungen in fremder Währung', () => {
+  test('47,60 USD und 44,10 Euro abgebucht gehören zusammen', () => {
+    assert.equal(umrechnungMoeglich(-4410, 4760), true);
+  });
+
+  test('ein ganz anderer Betrag nicht', () => {
+    assert.equal(umrechnungMoeglich(-1200, 4760), false);
+  });
+
+  test('mit Währung greift der Treffer, ohne Währung nicht', () => {
+    const buchung = tx({ counterparty: 'OPENAI', amount_cents: -4410, currency: 'EUR' });
+    const inUsd = beleg({ marke: 'openai', amount_cents: 4760, waehrung: 'USD', doc_date: '2026-08-14' });
+    const ohne = beleg({ marke: 'openai', amount_cents: 4760, doc_date: '2026-08-14' });
+    assert.ok(bewerte(buchung, inUsd));
+    assert.equal(bewerte(buchung, ohne), null);
+  });
+
+  test('ohne zeitliche Nähe zählt der umgerechnete Betrag nicht', () => {
+    const buchung = tx({ counterparty: 'OPENAI', amount_cents: -4410, booking_date: '2026-08-15' });
+    const weitWeg = beleg({ marke: 'openai', amount_cents: 4760, waehrung: 'USD', doc_date: '2026-06-01' });
+    assert.equal(bewerte(buchung, weitWeg), null);
+  });
+
+  test('der exakte Euro-Treffer schlägt den umgerechneten', () => {
+    const buchung = tx({ counterparty: 'OPENAI', amount_cents: -4410 });
+    const exakt = bewerte(buchung, beleg({ marke: 'openai', amount_cents: 4410 }));
+    const umgerechnet = bewerte(buchung, beleg({ marke: 'openai', amount_cents: 4760, waehrung: 'USD' }));
+    assert.ok(exakt.punkte > umgerechnet.punkte);
+  });
+});
+
+describe('Verstümmelte Antworten des Modells', () => {
+  test('Bruchstücke der Werkzeugantwort landen nicht in den Feldern', () => {
+    const muell = '</antml:parameter>';
+    const r = pruefe({
+      lesbar: true,
+      aussteller: muell,
+      rechnungsnummer: 'RE-1',
+      datum: `${muell}0`,
+      brutto_cents: 1234,
+      waehrung: 'eur',
+      marke: muell,
+      leistung: 'Beratung',
+      begruendung: 'x',
+      lieferant: '',
+    });
+    assert.equal(r.aussteller, '');
+    assert.equal(r.marke, '');
+    assert.equal(r.datum, '');
+    assert.equal(r.waehrung, 'EUR');
+    assert.equal(r.rechnungsnummer, 'RE-1');
+    assert.equal(r.brutto_cents, 1234);
+  });
+
+  test('ohne Aussteller und ohne Betrag gilt der Beleg als nicht lesbar', () => {
+    const r = pruefe({ lesbar: true, aussteller: '', brutto_cents: 0, datum: '', rechnungsnummer: '' });
+    assert.equal(r.lesbar, false);
+    assert.match(r.hinweis, /weder Aussteller noch Betrag/);
   });
 });
