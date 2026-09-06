@@ -224,20 +224,33 @@ function verdrahteAufgabendetail(a) {
 
 }
 
+// Fasst zusammen, was die KI aus den frisch hochgeladenen Belegen gelesen hat.
+function analyseText(anzahl, ergebnisse) {
+  const gelesen = ergebnisse.filter((r) => r?.analyse?.uebernommen?.length);
+  const summe = gelesen.reduce((s, r) => s + (r.analyse.brutto_cents || 0), 0);
+  if (!gelesen.length) {
+    const hinweis = ergebnisse.find((r) => r?.analyse?.hinweis || r?.analyse?.fehler)?.analyse;
+    return `${anzahl} Datei(en) hochgeladen.` +
+      (hinweis ? ` Nicht ausgelesen: ${hinweis.fehler || hinweis.hinweis}` : '');
+  }
+  return `${anzahl} Datei(en) hochgeladen, ${gelesen.length} ausgelesen (${euro(summe)}).`;
+}
+
 async function ladeDateienHoch(taskId, dateien) {
+  const ergebnisse = [];
   for (const datei of dateien) {
     try {
-      await api(`/api/tasks/${taskId}/dateien`, {
+      ergebnisse.push(await api(`/api/tasks/${taskId}/dateien`, {
         method: 'POST',
         headers: {
           'Content-Type': datei.type || 'application/octet-stream',
           'X-Filename': encodeURIComponent(datei.name),
         },
         body: datei,
-      });
+      }));
     } catch (err) { fehlerBehandeln(err); }
   }
-  melde(`${dateien.length} Datei(en) hochgeladen.`, 'erfolg');
+  melde(analyseText(dateien.length, ergebnisse), 'erfolg');
   await ladeAufgaben();
 }
 
@@ -435,16 +448,17 @@ function verdrahteMonat() {
 }
 
 async function belegeHochladen(positionId, dateien) {
+  const ergebnisse = [];
   for (const datei of dateien) {
     try {
-      await api(`/api/periods/${zustand.periodeId}/positionen/${positionId}/dateien`, {
+      ergebnisse.push(await api(`/api/periods/${zustand.periodeId}/positionen/${positionId}/dateien`, {
         method: 'POST',
         headers: { 'Content-Type': datei.type || 'application/octet-stream', 'X-Filename': encodeURIComponent(datei.name) },
         body: datei,
-      });
+      }));
     } catch (err) { fehlerBehandeln(err); }
   }
-  melde(`${dateien.length} Beleg(e) hochgeladen.`, 'erfolg');
+  melde(analyseText(dateien.length, ergebnisse), 'erfolg');
   await Promise.all([ladeMonat(), ladeLieferanten()]);
 }
 

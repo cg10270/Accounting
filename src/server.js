@@ -15,6 +15,7 @@ import * as logbuch from './services/logbook.js';
 import * as lieferanten from './services/lieferanten.js';
 import * as portal from './services/browser/portal.js';
 import * as postfach from './services/postfach.js';
+import { ergaenzeBelegdaten } from './services/belegdaten.js';
 import * as checkliste from './services/checkliste.js';
 import { erstelleBewirtungsbeleg, erstelleSpesenabrechnung, kombiniere } from './services/docgen.js';
 import { analysiereQuittung } from './services/beleganalyse.js';
@@ -217,7 +218,8 @@ router.post('/api/periods/:pid/positionen/:posid/dateien', async (req, res) => {
   });
   run('UPDATE artifacts SET position_id = ?, vendor = ? WHERE id = ?',
     position.id, lieferant?.name || '', datei.id);
-  json(res, get('SELECT * FROM artifacts WHERE id = ?', datei.id), 201);
+  const analyse = await ergaenzeBelegdaten(datei.id, { buffer, mime: req.headers['content-type'], filename });
+  json(res, { ...get('SELECT * FROM artifacts WHERE id = ?', datei.id), analyse }, 201);
 });
 
 // Die flache Lieferantensicht - ohne Bereiche, fuer den reinen Bankabgleich.
@@ -273,7 +275,8 @@ router.post('/api/periods/:pid/lieferanten/:lid/dateien', async (req, res) => {
     ordner: lieferant.name,
   });
   run('UPDATE artifacts SET vendor = ? WHERE id = ?', lieferant.name, datei.id);
-  json(res, datei, 201);
+  const analyse = await ergaenzeBelegdaten(datei.id, { buffer, mime: req.headers['content-type'], filename });
+  json(res, { ...get('SELECT * FROM artifacts WHERE id = ?', datei.id), analyse }, 201);
 });
 
 // --- Postfach ---------------------------------------------------------------
@@ -312,7 +315,9 @@ router.post('/api/tasks/:id/dateien', async (req, res) => {
   const mime = req.headers['content-type'] || 'application/octet-stream';
   const buffer = await leseBody(req);
   if (!buffer.length) throw new Error('Die hochgeladene Datei ist leer.');
-  json(res, await speichereDatei({ periodId: task.period_id, taskId, filename, mime, buffer, source: 'manuell' }), 201);
+  const datei = await speichereDatei({ periodId: task.period_id, taskId, filename, mime, buffer, source: 'manuell' });
+  const analyse = await ergaenzeBelegdaten(datei.id, { buffer, mime, filename });
+  json(res, { ...get('SELECT * FROM artifacts WHERE id = ?', datei.id), analyse }, 201);
 });
 
 router.get('/api/dateien/:id/inhalt', async (req, res) => {
