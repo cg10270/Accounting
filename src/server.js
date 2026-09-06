@@ -218,6 +218,8 @@ router.post('/api/periods/:pid/positionen/:posid/dateien', async (req, res) => {
     source: 'manuell',
     ordner: lieferant ? lieferant.name : position.name,
   });
+  if (datei.doppelt) return json(res, { ...datei, doppelt: true }, 200);
+
   run('UPDATE artifacts SET position_id = ?, vendor = ? WHERE id = ?',
     position.id, lieferant?.name || '', datei.id);
   const analyse = await ergaenzeBelegdaten(datei.id, { buffer, mime: req.headers['content-type'], filename });
@@ -278,6 +280,8 @@ router.post('/api/periods/:pid/lieferanten/:lid/dateien', async (req, res) => {
     source: 'manuell',
     ordner: lieferant.name,
   });
+  if (datei.doppelt) return json(res, { ...datei, doppelt: true }, 200);
+
   run('UPDATE artifacts SET vendor = ? WHERE id = ?', lieferant.name, datei.id);
   const analyse = await ergaenzeBelegdaten(datei.id, { buffer, mime: req.headers['content-type'], filename });
   // Ein neuer Beleg kann eine offene Buchung schliessen - sofort nachrechnen.
@@ -331,6 +335,7 @@ router.post('/api/tasks/:id/dateien', async (req, res) => {
   const buffer = await leseBody(req);
   if (!buffer.length) throw new Error('Die hochgeladene Datei ist leer.');
   const datei = await speichereDatei({ periodId: task.period_id, taskId, filename, mime, buffer, source: 'manuell' });
+  if (datei.doppelt) return json(res, { ...datei, doppelt: true }, 200);
   const analyse = await ergaenzeBelegdaten(datei.id, { buffer, mime, filename });
   json(res, { ...get('SELECT * FROM artifacts WHERE id = ?', datei.id), analyse }, 201);
 });
@@ -495,7 +500,10 @@ router.post('/api/bank/buchungen/:id/beleg', async (req, res) => {
     periodId: tx.period_id, filename, mime, buffer, source: 'manuell',
     ordner: tx.marke || tx.counterparty || 'Bank',
   });
-  const analyse = await ergaenzeBelegdaten(datei.id, { buffer, mime, filename });
+  // Auch eine Dublette darf hier verbunden werden: der Beleg ist da, er war
+  // nur bisher einer anderen Buchung zugeordnet oder gar keiner.
+  const analyse = datei.doppelt ? { ki: false, hinweis: 'bereits vorhanden' }
+    : await ergaenzeBelegdaten(datei.id, { buffer, mime, filename });
   abgleich.verbinde(tx.id, datei.id);
   json(res, { ...get('SELECT * FROM artifacts WHERE id = ?', datei.id), analyse }, 201);
 });

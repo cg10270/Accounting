@@ -248,10 +248,13 @@ async function dateienSenden(pfad, dateien) {
     }
   }
 
-  const gelesen = gespeichert.filter((r) => r?.analyse?.uebernommen?.length);
+  const doppelt = gespeichert.filter((r) => r?.doppelt);
+  const neu = gespeichert.filter((r) => !r?.doppelt);
+  const gelesen = neu.filter((r) => r?.analyse?.uebernommen?.length);
   const summe = gelesen.reduce((s, r) => s + (r.analyse.brutto_cents || 0), 0);
 
-  const teile = [`${gespeichert.length} von ${dateien.length} gespeichert`];
+  const teile = [`${neu.length} von ${dateien.length} gespeichert`];
+  if (doppelt.length) teile.push(`${doppelt.length} schon vorhanden`);
   if (gelesen.length) teile.push(`${gelesen.length} ausgelesen (${euro(summe)})`);
   else {
     const hinweis = gespeichert.find((r) => r?.analyse?.hinweis || r?.analyse?.fehler)?.analyse;
@@ -540,8 +543,10 @@ function zeichneAbgleich() {
         <tr>
           <td class="klein-text">${datumDe(tx.booking_date)}</td>
           <td class="klein-text">
-            <strong>${esc(tx.anzeige || tx.counterparty)}</strong><br>
-            <span class="leise">${esc(tx.purpose || tx.counterparty)}</span>
+            <strong>${esc(tx.anzeige || tx.counterparty)}</strong>
+            ${tx.counterparty && tx.counterparty.toLowerCase() !== String(tx.anzeige || '').toLowerCase()
+              ? `<span class="leise"> · ${esc(tx.counterparty)}</span>` : ''}
+            ${tx.purpose ? `<br><span class="leise">Verwendungszweck: ${esc(tx.purpose)}</span>` : ''}
             ${tx.angefragt ? `<br><span class="leise">angefragt bei ${esc(tx.angefragt.recipient)} · ${esc(tx.angefragt.status)}</span>` : ''}
           </td>
           <td class="rechts">${euro(tx.amount_cents)}</td>
@@ -659,6 +664,26 @@ $('#ab-holen').onclick = async (e) => {
   } catch (err) { fehlerBehandeln(err); }
   e.target.disabled = false;
   e.target.textContent = alt;
+};
+
+// Die offene Liste als Text - zum Weitergeben an Kollegen oder die Kanzlei.
+$('#ab-kopieren').onclick = async () => {
+  const offen = zustand.abgleich?.offen || [];
+  if (!offen.length) return melde('Nichts offen.', 'erfolg');
+  const zeilen = [['Datum', 'Firma', 'Gegenpartei', 'Verwendungszweck', 'Betrag'].join('\t')];
+  for (const tx of offen) {
+    zeilen.push([datumDe(tx.booking_date), tx.anzeige || '', tx.counterparty || '',
+      (tx.purpose || '').replace(/\s+/g, ' '), (tx.amount_cents / 100).toFixed(2)].join('\t'));
+  }
+  const text = zeilen.join('\n');
+  try {
+    await navigator.clipboard.writeText(text);
+    melde(`${offen.length} offene Buchungen in die Zwischenablage kopiert.`, 'erfolg');
+  } catch {
+    // Ohne Zwischenablage-Recht bleibt der Weg über die Konsole.
+    console.log(text);
+    melde('Zwischenablage nicht erlaubt - die Liste steht in der Browser-Konsole.', 'fehler');
+  }
 };
 
 $('#ab-erledigt-zeigen').onclick = (e) => {

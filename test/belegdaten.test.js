@@ -27,3 +27,25 @@ describe('Belegdaten nachtragen', () => {
     assert.match(r.hinweis, /PDF, PNG und JPEG/);
   });
 });
+
+describe('Dubletten', () => {
+  test('dieselbe Datei wird im selben Zeitraum nur einmal abgelegt', async () => {
+    const { speichereDatei } = await import('../src/services/ablage.js');
+    const { run, get, all } = await import('../src/db.js');
+
+    run("INSERT INTO periods (year, month, label) VALUES (2026, 9, 'September 2026')");
+    const periodId = get('SELECT id FROM periods WHERE year = 2026 AND month = 9').id;
+    const buffer = Buffer.from('Rechnungsinhalt');
+
+    const erst = await speichereDatei({
+      periodId, filename: 'rechnung.pdf', mime: 'application/pdf', buffer, source: 'manuell',
+    });
+    const zweit = await speichereDatei({
+      periodId, filename: 'rechnung-kopie.pdf', mime: 'application/pdf', buffer, source: 'manuell',
+    });
+
+    assert.equal(zweit.doppelt, true);
+    assert.equal(zweit.id, erst.id);
+    assert.equal(all('SELECT id FROM artifacts WHERE period_id = ?', periodId).length, 1);
+  });
+});
