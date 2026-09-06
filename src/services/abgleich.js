@@ -147,7 +147,11 @@ export function uebersicht(periodId) {
 
   const offen = [];
   const erledigt = [];
-  for (const tx of buchungen) {
+  // Geldeingaenge sind Kundenzahlungen und Erstattungen - dafuer gibt es keine
+  // Eingangsrechnung zu beschaffen. Sie wuerden die Liste der fehlenden
+  // Belege nur aufblaehen und die Summe unbrauchbar machen.
+  const eingaenge = buchungen.filter((tx) => tx.amount_cents >= 0);
+  for (const tx of buchungen.filter((tx) => tx.amount_cents < 0)) {
     const belege = nachTx.get(tx.id) || [];
     const zeile = {
       ...tx,
@@ -175,6 +179,9 @@ export function uebersicht(periodId) {
     ohneBuchung,
     zahlen: {
       buchungen: buchungen.length,
+      ausgaben: offen.length + erledigt.length,
+      eingaenge: eingaenge.length,
+      eingaenge_cents: summe(eingaenge, 'amount_cents'),
       offen: offen.length,
       erledigt: erledigt.length,
       offen_cents: summe(offen, 'amount_cents'),

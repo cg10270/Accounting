@@ -282,10 +282,20 @@ for (const [tabelle, spalte, definition] of [
   ['artifacts', 'analysiert_am', 'TEXT'],
   ['artifacts', 'analyse_fehler', "TEXT NOT NULL DEFAULT ''"],
   ['bank_tx', 'marke', "TEXT NOT NULL DEFAULT ''"],
+  // Erkennungsmerkmal einer Buchung, damit derselbe Kontoauszug nicht zweimal
+  // importiert wird. Bewusst Klartext statt Hash: so laesst er sich fuer
+  // bestehende Zeilen in einem Schritt nachtragen.
+  ['bank_tx', 'fingerprint', "TEXT NOT NULL DEFAULT ''"],
 ]) {
   const vorhanden = db.prepare(`PRAGMA table_info(${tabelle})`).all().some((s) => s.name === spalte);
   if (!vorhanden) db.exec(`ALTER TABLE ${tabelle} ADD COLUMN ${spalte} ${definition}`);
 }
+
+// Bestehende Buchungen bekommen ihr Erkennungsmerkmal nachtraeglich.
+db.exec(`UPDATE bank_tx SET fingerprint =
+           booking_date || '|' || amount_cents || '|' || counterparty || '|' || purpose
+         WHERE fingerprint = ''`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_bank_tx_fingerprint ON bank_tx(period_id, fingerprint)');
 
 export const all = (sql, ...params) => db.prepare(sql).all(...params);
 export const get = (sql, ...params) => db.prepare(sql).get(...params);

@@ -30,13 +30,16 @@ const senden = (p, daten, methode = 'POST') =>
   api(p, { method: methode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(daten) });
 
 let hinweisTimer;
-function melde(text, art = 'info') {
+function melde(text, art = 'info', dauer = null) {
   const el = $('#hinweis');
   el.textContent = text;
   el.className = art;
   el.style.display = 'block';
   clearTimeout(hinweisTimer);
-  hinweisTimer = setTimeout(() => { el.style.display = 'none'; }, art === 'fehler' ? 9000 : 4000);
+  // dauer = 0 laesst die Meldung stehen - fuer Fortschritt, der laenger
+  // dauert als die uebliche Anzeigezeit.
+  const ms = dauer ?? (art === 'fehler' ? 9000 : 4000);
+  if (ms > 0) hinweisTimer = setTimeout(() => { el.style.display = 'none'; }, ms);
 }
 const fehlerBehandeln = (err) => melde(err.message || String(err), 'fehler');
 
@@ -230,43 +233,61 @@ function verdrahteAufgabendetail(a) {
  * Fehlschlaege duerfen nicht in einer Erfolgsmeldung untergehen: wer 100
  * Dateien hochlaedt, muss sehen, wenn nur 14 gespeichert wurden.
  */
+let uploadLaeuft = false;
+
 async function dateienSenden(pfad, dateien) {
+  // Jede Datei wird ausgelesen, das dauert einige Sekunden. Ohne sichtbaren
+  // Fortschritt haelt man den Upload fuer haengen geblieben und laedt erneut
+  // hoch - deshalb Fortschrittsanzeige und Sperre gegen den zweiten Lauf.
+  if (uploadLaeuft) {
+    melde('Es läuft noch ein Upload - bitte abwarten.', 'fehler');
+    return { gespeichert: [], fehler: [] };
+  }
+  uploadLaeuft = true;
+  document.body.style.cursor = 'progress';
+
   const gespeichert = [];
   const fehler = [];
-  for (const datei of dateien) {
-    try {
-      gespeichert.push(await api(pfad, {
-        method: 'POST',
-        headers: {
-          'Content-Type': datei.type || 'application/octet-stream',
-          'X-Filename': encodeURIComponent(datei.name),
-        },
-        body: datei,
-      }));
-    } catch (err) {
-      fehler.push({ name: datei.name, fehler: err.message || String(err) });
+  try {
+    for (const [n, datei] of dateien.entries()) {
+      melde(`Lade hoch und lese aus: ${n + 1} von ${dateien.length} — ${datei.name}`, 'info', 0);
+      try {
+        gespeichert.push(await api(pfad, {
+          method: 'POST',
+          headers: {
+            'Content-Type': datei.type || 'application/octet-stream',
+            'X-Filename': encodeURIComponent(datei.name),
+          },
+          body: datei,
+        }));
+      } catch (err) {
+        fehler.push({ name: datei.name, fehler: err.message || String(err) });
+      }
     }
-  }
 
-  const doppelt = gespeichert.filter((r) => r?.doppelt);
-  const neu = gespeichert.filter((r) => !r?.doppelt);
-  const gelesen = neu.filter((r) => r?.analyse?.uebernommen?.length);
-  const summe = gelesen.reduce((s, r) => s + (r.analyse.brutto_cents || 0), 0);
+    const doppelt = gespeichert.filter((r) => r?.doppelt);
+    const neu = gespeichert.filter((r) => !r?.doppelt);
+    const gelesen = neu.filter((r) => r?.analyse?.uebernommen?.length);
+    const summe = gelesen.reduce((s, r) => s + (r.analyse.brutto_cents || 0), 0);
 
-  const teile = [`${neu.length} von ${dateien.length} gespeichert`];
-  if (doppelt.length) teile.push(`${doppelt.length} schon vorhanden`);
-  if (gelesen.length) teile.push(`${gelesen.length} ausgelesen (${euro(summe)})`);
-  else {
-    const hinweis = gespeichert.find((r) => r?.analyse?.hinweis || r?.analyse?.fehler)?.analyse;
-    if (hinweis) teile.push(`nicht ausgelesen: ${hinweis.fehler || hinweis.hinweis}`);
-  }
-  if (fehler.length) {
-    teile.push(`${fehler.length} fehlgeschlagen: ${fehler[0].name} — ${fehler[0].fehler}`);
-    console.warn('Upload fehlgeschlagen:', fehler);
-  }
+    const teile = [`${neu.length} von ${dateien.length} gespeichert`];
+    if (doppelt.length) teile.push(`${doppelt.length} schon vorhanden`);
+    if (gelesen.length) teile.push(`${gelesen.length} ausgelesen (${euro(summe)})`);
+    else {
+      const hinweis = gespeichert.find((r) => r?.analyse?.hinweis || r?.analyse?.fehler)?.analyse;
+      if (hinweis) teile.push(`nicht ausgelesen: ${hinweis.fehler || hinweis.hinweis}`);
+    }
+    if (fehler.length) {
+      teile.push(`${fehler.length} fehlgeschlagen: ${fehler[0].name} — ${fehler[0].fehler}`);
+      console.warn('Upload fehlgeschlagen:', fehler);
+    }
 
-  melde(teile.join(' · ') + '.', fehler.length ? 'fehler' : 'erfolg');
-  return { gespeichert, fehler };
+    melde(teile.join(' · ') + '.', fehler.length ? 'fehler' : 'erfolg');
+    return { gespeichert, fehler };
+  } finally {
+    uploadLaeuft = false;
+    document.body.style.cursor = '';
+  }
 }
 
 async function ladeDateienHoch(taskId, dateien) {
@@ -526,7 +547,8 @@ function zeichneAbgleich() {
   if (!d) return;
   const z = d.zahlen;
   $('#ab-stand').textContent =
-    `${z.buchungen} Buchungen · ${z.offen} ohne Beleg (${euro(z.offen_cents)}) · ${z.erledigt} erledigt`;
+    `${z.buchungen} Buchungen: ${z.ausgaben} Ausgaben · ${z.offen} davon ohne Beleg (${euro(z.offen_cents)}) · `
+    + `${z.erledigt} erledigt · ${z.eingaenge} Eingänge (${euro(z.eingaenge_cents)}, kein Beleg nötig)`;
   $('#ab-offen-zahl').textContent = z.offen ? `${z.offen} · ${euro(z.offen_cents)}` : 'nichts offen';
   $('#ab-ohne-zahl').textContent = z.belege_ohne_buchung
     ? `${z.belege_ohne_buchung}${z.belege_ohne_betrag ? ` · ${z.belege_ohne_betrag} ohne gelesenen Betrag` : ''}`

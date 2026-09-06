@@ -415,16 +415,32 @@ router.post('/api/periods/:id/bank/import', async (req, res) => {
   );
   const statementId = Number(r.lastInsertRowid);
 
+  // Wer denselben Auszug zweimal einliest, verdoppelt sonst jede Buchung -
+  // und damit auch jede offene Position. Der Bestand wird einmal gezaehlt;
+  // zwei echte gleiche Buchungen an einem Tag bleiben dabei zwei.
+  const bestand = new Map();
+  for (const zeile of all(
+    'SELECT fingerprint, COUNT(*) AS n FROM bank_tx WHERE period_id = ? GROUP BY fingerprint', periodId)) {
+    bestand.set(zeile.fingerprint, zeile.n);
+  }
+
+  let uebersprungen = 0;
   for (const tx of ergebnis.transaktionen) {
+    const fingerprint = `${tx.booking_date}|${tx.amount_cents}|${tx.counterparty}|${tx.purpose}`;
+    const offen = bestand.get(fingerprint) || 0;
+    if (offen > 0) { bestand.set(fingerprint, offen - 1); uebersprungen++; continue; }
+
     const key = groupKeyFor(tx);
     run(
       `INSERT INTO bank_tx (statement_id, period_id, booking_date, value_date, counterparty, purpose,
-                            amount_cents, currency, group_key, group_label, raw)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            amount_cents, currency, group_key, group_label, raw, fingerprint)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       statementId, periodId, tx.booking_date, tx.value_date, tx.counterparty, tx.purpose,
-      tx.amount_cents, tx.currency, key, labelFor(tx, key), tx.raw,
+      tx.amount_cents, tx.currency, key, labelFor(tx, key), tx.raw, fingerprint,
     );
   }
+  run('UPDATE bank_statements SET tx_count = ? WHERE id = ?',
+    ergebnis.transaktionen.length - uebersprungen, statementId);
   const zuordnung = lieferanten.ordneBuchungenZu(periodId);
   abgleich.markiereBuchungen(periodId);
   const abgleichErgebnis = abgleich.gleicheAb(periodId);
@@ -433,7 +449,8 @@ router.post('/api/periods/:id/bank/import', async (req, res) => {
     statement_id: statementId,
     zuordnung,
     abgleich: abgleichErgebnis,
-    buchungen: ergebnis.transaktionen.length,
+    buchungen: ergebnis.transaktionen.length - uebersprungen,
+    doppelt: uebersprungen,
     verworfen: ergebnis.verworfen.length,
     erkannte_spalten: ergebnis.mapping,
     kopfzeile: ergebnis.header,
