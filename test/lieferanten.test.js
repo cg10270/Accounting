@@ -112,6 +112,72 @@ describe('Zuordnung der Buchungen', () => {
   });
 });
 
+describe('Betragsabhängige Muster', () => {
+  test('Schreibweise wird eingelesen', () => {
+    assert.deepEqual(lf.parseMuster('google >1000'), { muster: 'google', betrag_min_cents: 100000, betrag_max_cents: null });
+    assert.deepEqual(lf.parseMuster('google <1000'), { muster: 'google', betrag_min_cents: null, betrag_max_cents: 100000 });
+    assert.deepEqual(lf.parseMuster('google 50-200'), { muster: 'google', betrag_min_cents: 5000, betrag_max_cents: 20000 });
+    assert.deepEqual(lf.parseMuster('google'), { muster: 'google', betrag_min_cents: null, betrag_max_cents: null });
+    assert.equal(lf.parseMuster('  '), null);
+  });
+
+  test('deutsche Schreibweise mit Tausenderpunkt', () => {
+    assert.equal(lf.parseMuster('google >1.000').betrag_min_cents, 100000);
+    assert.equal(lf.parseMuster('google >1.234,50').betrag_min_cents, 123450);
+  });
+
+  // Bei uns gilt: große Google-Zahlungen sind immer Werbung.
+  test('der Betrag trennt Werbung von Software, wo der Text es nicht tut', () => {
+    const ads = lf.legeAn({ name: 'Google Ads', muster: ['google ads', 'google >1000'] });
+    const workspace = lf.legeAn({ name: 'Google Workspace', muster: ['google workspace', 'google <1000'] });
+
+    buchung('GOOGLE IRELAND LTD', 'Rechnung 8823', -215000);   // groß  -> Werbung
+    buchung('GOOGLE IRELAND LTD', 'Rechnung 4711', -5950);     // klein -> Software
+    lf.ordneBuchungenZu(periodId);
+
+    const zeilen = all('SELECT lieferant_id, amount_cents FROM bank_tx ORDER BY ABS(amount_cents) DESC');
+    assert.equal(zeilen[0].lieferant_id, ads.id);
+    assert.equal(zeilen[1].lieferant_id, workspace.id);
+  });
+
+  // Sonst würde eine Jahresrechnung für Workspace als Werbung verbucht.
+  test('ein ausdrücklicher Buchungstext schlägt die Betragsregel', () => {
+    lf.legeAn({ name: 'Google Ads', muster: ['google ads', 'google >1000'] });
+    const workspace = lf.legeAn({ name: 'Google Workspace', muster: ['google workspace', 'google <1000'] });
+
+    buchung('GOOGLE IRELAND LTD', 'Google Workspace Jahresrechnung', -240000);
+    lf.ordneBuchungenZu(periodId);
+    assert.equal(get('SELECT lieferant_id FROM bank_tx').lieferant_id, workspace.id);
+  });
+
+  test('die Grenze selbst zählt nicht zum größeren Bereich', () => {
+    const ads = lf.legeAn({ name: 'Google Ads', muster: ['google >1000'] });
+    const workspace = lf.legeAn({ name: 'Google Workspace', muster: ['google <1000'] });
+    buchung('GOOGLE IRELAND LTD', 'x', -100000);   // exakt 1.000,00
+    lf.ordneBuchungenZu(periodId);
+    assert.equal(get('SELECT lieferant_id FROM bank_tx').lieferant_id, workspace.id,
+      'genau 1.000 EUR fällt noch unter "<1000", nicht unter ">1000"');
+  });
+
+  test('das Vorzeichen spielt keine Rolle', () => {
+    const l = lf.legeAn({ name: 'Google Ads', muster: ['google >1000'] });
+    buchung('GOOGLE IRELAND LTD', 'Gutschrift', 215000);   // Eingang statt Abgang
+    lf.ordneBuchungenZu(periodId);
+    assert.equal(get('SELECT lieferant_id FROM bank_tx').lieferant_id, l.id);
+  });
+
+  test('passt keine Betragsbedingung, bleibt die Buchung ohne Lieferant', () => {
+    lf.legeAn({ name: 'Google Ads', muster: ['google >1000'] });
+    buchung('GOOGLE IRELAND LTD', 'x', -5950);
+    assert.equal(lf.ordneBuchungenZu(periodId).ohne, 1);
+  });
+
+  test('die Bedingung wird in der Oberfläche lesbar zurückgegeben', () => {
+    const l = lf.legeAn({ name: 'Google Ads', muster: ['google >1000', 'google ads'] });
+    assert.deepEqual(l.muster.map((m) => m.text), ['google >1.000', 'google ads']);
+  });
+});
+
 describe('Monatsübersicht', () => {
   test('stellt Banksumme und Belegsumme gegenüber', () => {
     const l = lf.legeAn({ name: 'Google' });

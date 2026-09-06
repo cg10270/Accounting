@@ -90,14 +90,31 @@ export function parseAmountToCents(value) {
   if (s.startsWith('-')) { vorzeichen *= -1; s = s.slice(1); }
   if (s.startsWith('+')) s = s.slice(1);
 
-  const letztesKomma = s.lastIndexOf(',');
-  const letzterPunkt = s.lastIndexOf('.');
-  if (letztesKomma > letzterPunkt) {
-    s = s.replace(/\./g, '').replace(',', '.');      // deutsches Format
-  } else if (letzterPunkt > letztesKomma) {
-    s = s.replace(/,/g, '');                          // englisches Format
-  } else {
+  // Welches Zeichen trennt die Nachkommastellen?
+  //   beide vorhanden   -> das hintere trennt, das andere gruppiert Tausender
+  //   nur eines, mehrfach -> alle gruppieren ("1.234.567")
+  //   nur eines, einfach  -> genau drei Ziffern dahinter heisst gruppieren
+  //                          ("1.000" sind tausend Euro, nicht eins), sonst
+  //                          trennt es die Nachkommastellen ("84.20")
+  const punkte = (s.match(/\./g) || []).length;
+  const kommas = (s.match(/,/g) || []).length;
+
+  if (punkte && kommas) {
+    const trenner = s.lastIndexOf(',') > s.lastIndexOf('.') ? ',' : '.';
+    const gruppierer = trenner === ',' ? '.' : ',';
+    s = s.split(gruppierer).join('');
+    s = s.replace(trenner, '.');
+  } else if (punkte + kommas > 1) {
     s = s.replace(/[.,]/g, '');
+  } else if (punkte + kommas === 1) {
+    const zeichen = punkte ? '.' : ',';
+    const stelle = s.indexOf(zeichen);
+    const vorher = s.slice(0, stelle);
+    // Drei Ziffern dahinter sprechen fuer eine Tausendergruppe - aber nur,
+    // wenn davor ueberhaupt etwas von null Verschiedenes steht. "0,005" ist
+    // ein Bruchteil, keine fuenf.
+    const gruppiert = stelle === s.length - 4 && /^\d+$/.test(vorher) && !/^0+$/.test(vorher);
+    s = gruppiert ? s.replace(zeichen, '') : s.replace(zeichen, '.');
   }
   const zahl = Number(s);
   if (!Number.isFinite(zahl)) return null;

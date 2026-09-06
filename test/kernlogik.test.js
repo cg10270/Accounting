@@ -47,6 +47,22 @@ describe('Beträge aus dem Kontoauszug', () => {
     assert.equal(parseAmountToCents('€ 59,50'), 5950);
   });
 
+  // "1.000" ist zweideutig: deutsch tausend, englisch eins. In einem
+  // Auszug mit zwei Nachkommastellen kann ein Trennzeichen mit genau drei
+  // Ziffern dahinter nur Tausender gruppieren.
+  test('einzelnes Trennzeichen mit drei Ziffern gruppiert Tausender', () => {
+    assert.equal(parseAmountToCents('1.000'), 100000);
+    assert.equal(parseAmountToCents('1,000'), 100000);
+    assert.equal(parseAmountToCents('12.345'), 1234500);
+    assert.equal(parseAmountToCents('84.20'), 8420, 'zwei Ziffern bleiben Nachkommastellen');
+    assert.equal(parseAmountToCents('1234.56'), 123456);
+  });
+
+  test('mehrere Tausendergruppen ohne Nachkommastellen', () => {
+    assert.equal(parseAmountToCents('1.234.567'), 123456700);
+    assert.equal(parseAmountToCents('1.234.567,89'), 123456789);
+  });
+
   test('Unlesbares ergibt null statt einer geratenen Zahl', () => {
     assert.equal(parseAmountToCents(''), null);
     assert.equal(parseAmountToCents('siehe Anlage'), null);

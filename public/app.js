@@ -590,7 +590,7 @@ function zeichneLieferanten() {
           <td><strong>${esc(l.name)}</strong>${l.erwartet ? `<br><span class="klein-text leise">${l.erwartet} Beleg(e)/Monat</span>` : ''}</td>
           <td class="klein-text">${l.url ? `<a href="${esc(l.url)}" target="_blank">${esc(l.url.slice(0, 46))}</a>` : '<span class="leise">—</span>'}</td>
           <td class="klein-text">${esc(l.username || '—')} ${l.hat_secret ? '· ••••••••' : '<span class="leise">· kein Passwort</span>'}${l.has_mfa ? ' · Code' : ''}</td>
-          <td class="klein-text leise">${l.muster.map((m) => esc(m.muster)).join(', ') || '—'}</td>
+          <td class="klein-text leise">${l.muster.map((m) => esc(m.text)).join(', ') || '—'}</td>
           <td class="rechts reihe" style="justify-content:flex-end">
             <button class="knopf leise klein lf-bearbeiten" data-id="${l.id}">Ändern</button>
             <button class="knopf gefahr klein lf-loeschen" data-id="${l.id}">×</button>
@@ -617,7 +617,7 @@ function zeichneLieferanten() {
       $('#lf-secret').value = '';
       $('#lf-secret').placeholder = l.hat_secret ? '••••••••  (leer lassen = unverändert)' : '';
       $('#lf-erwartet').value = l.erwartet;
-      $('#lf-muster').value = l.muster.map((m) => m.muster).join('\n');
+      $('#lf-muster').value = l.muster.map((m) => m.text).join('\n');
       $('#lf-mfa').checked = Boolean(l.has_mfa);
       $('#lf-anlegen').textContent = `"${l.name}" speichern`;
       $('#lf-anlegen').dataset.id = l.id;

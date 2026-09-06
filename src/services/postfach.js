@@ -95,18 +95,35 @@ export async function durchsuche(periodId, { nachlaufTage = 10 } = {}) {
 
 // Ordnet über Absender, Betreff und Dateiname zu. Das längste passende Muster
 // gewinnt, damit ein genauerer Treffer einen allgemeinen überstimmt.
+//
+// Eine Mail traegt keinen Betrag. Muster mit Betragsbedingung - bei Google
+// unterscheiden sie Werbung von Software - lassen sich hier also nicht pruefen.
+// Sie werden nur herangezogen, wenn kein betragsfreies Muster passt, und auch
+// dann nur, wenn sie alle auf denselben Lieferanten zeigen. Sonst bleibt die
+// Zuordnung offen: lieber der Mensch entscheidet, als dass geraten wird.
 function rateLieferant(nachricht, anhang, lieferanten) {
   const roh = `${nachricht.from || ''} ${nachricht.subject || ''} ${anhang.filename || ''}`;
   const heuhaufen = `${normalizeName(roh)} ${normalizeName(roh, { psp: false })}`;
-  let bester = null;
+
+  const treffer = [];
   for (const l of lieferanten) {
-    for (const { muster } of l.muster) {
-      if (heuhaufen.includes(muster) && (!bester || muster.length > bester.laenge)) {
-        bester = { id: l.id, name: l.name, laenge: muster.length };
-      }
+    for (const m of l.muster) {
+      if (!heuhaufen.includes(m.muster)) continue;
+      const betragsgebunden = m.betrag_min_cents != null || m.betrag_max_cents != null;
+      treffer.push({ id: l.id, name: l.name, laenge: m.muster.length, betragsgebunden });
     }
   }
-  return bester ? { id: bester.id, name: bester.name } : null;
+  if (!treffer.length) return null;
+
+  const sicher = treffer.filter((t) => !t.betragsgebunden);
+  if (sicher.length) {
+    const bester = sicher.reduce((a, b) => (b.laenge > a.laenge ? b : a));
+    return { id: bester.id, name: bester.name };
+  }
+
+  const lieferantIds = new Set(treffer.map((t) => t.id));
+  if (lieferantIds.size > 1) return null;   // mehrdeutig - der Mensch entscheidet
+  return { id: treffer[0].id, name: treffer[0].name };
 }
 
 /**

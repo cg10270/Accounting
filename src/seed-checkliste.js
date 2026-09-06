@@ -14,12 +14,15 @@ const LIEFERANTEN = [
   { name: 'Finom',            url: 'https://app.finom.co',                          muster: ['finom'] },
   { name: 'Cleverlohn',       url: '',                                              muster: ['cleverlohn'] },
   { name: 'Stripe',           url: 'https://dashboard.stripe.com',                  muster: ['stripe'] },
-  { name: 'Google Ads',       url: 'https://ads.google.com',                        muster: ['google ads', 'google adwords'] },
+  // Google taucht im Auszug oft nur als "GOOGLE IRELAND LTD" auf. Wo der
+  // Verwendungszweck nichts hergibt, entscheidet die Größenordnung:
+  // Beträge über 1.000 EUR sind bei uns immer Werbung.
+  { name: 'Google Ads',       url: 'https://ads.google.com',                        muster: ['google ads', 'google adwords', 'google >1000'] },
   { name: 'Meta Ads',         url: 'https://business.facebook.com',                 muster: ['meta platforms', 'facebook'] },
   { name: 'LinkedIn Ads',     url: 'https://www.linkedin.com/campaignmanager',      muster: ['linkedin'] },
   { name: 'OpenAI',           url: 'https://platform.openai.com',                   muster: ['openai'] },
   { name: 'Anthropic',        url: 'https://console.anthropic.com',                 muster: ['anthropic', 'claude'] },
-  { name: 'Google Workspace', url: 'https://admin.google.com',                      muster: ['google workspace', 'google cloud', 'gsuite'] },
+  { name: 'Google Workspace', url: 'https://admin.google.com',                      muster: ['google workspace', 'google cloud', 'gsuite', 'google <1000'] },
   { name: 'HubSpot',          url: 'https://app.hubspot.com',                       muster: ['hubspot'] },
   { name: 'Slack',            url: 'https://slack.com',                             muster: ['slack'] },
   { name: 'Canva',            url: 'https://www.canva.com',                         muster: ['canva'] },
@@ -115,6 +118,7 @@ if (neueLieferanten) {
   console.log('    unter Lieferanten > Ändern die direkte Rechnungsadresse eintragen.');
   console.log('  - Zugangsdaten sind noch nicht hinterlegt.');
   console.log('  - "Google Ads" und "Google Workspace" erscheinen im Kontoauszug oft');
-  console.log('    beide nur als "GOOGLE". Wenn die Zuordnung danebengeht, die Muster');
-  console.log('    anhand des echten Buchungstexts nachschärfen.');
+  console.log('    beide nur als "GOOGLE". Deshalb entscheidet dort der Betrag:');
+  console.log('    über 1.000 EUR gilt als Werbung, darunter als Software. Steht der');
+  console.log('    Zweck ausdrücklich im Buchungstext, hat er Vorrang vor dieser Regel.');
 }

@@ -149,7 +149,13 @@
           <label class="feld"><span>Belege je Monat (0 = unbekannt)</span><input type="number" id="lf-erwartet" value="0" min="0"></label>
         </div>
         <label class="feld"><span>Erkennungsmuster im Kontoauszug (eines je Zeile, leer = Name)</span>
-          <textarea id="lf-muster" style="min-height:52px" placeholder="google&#10;paypal *google"></textarea></label>
+          <textarea id="lf-muster" style="min-height:62px" placeholder="google ads&#10;google &gt;1000"></textarea></label>
+        <p class="klein-text leise" style="margin:-6px 0 12px">
+          Ein Muster kann an den Betrag gebunden werden, wenn der Text allein nicht reicht:
+          <code>google &gt;1000</code> nur über 1.000 €, <code>google &lt;1000</code> nur darunter,
+          <code>google 50-200</code> nur in dieser Spanne. Steht der Zweck ausdrücklich im
+          Buchungstext, hat er Vorrang vor der Betragsregel.
+        </p>
         <div class="reihe">
           <label class="reihe klein-text" style="gap:6px"><input type="checkbox" id="lf-mfa" style="width:auto"> Verlangt Bestätigungscode</label>
           <button class="knopf klein" id="lf-anlegen">Anlegen</button>

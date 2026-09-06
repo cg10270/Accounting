@@ -253,6 +253,10 @@ for (const [tabelle, spalte, definition] of [
   ['artifacts', 'lieferant_id', 'INTEGER REFERENCES lieferanten(id) ON DELETE SET NULL'],
   ['bank_tx', 'lieferant_id', 'INTEGER REFERENCES lieferanten(id) ON DELETE SET NULL'],
   ['artifacts', 'position_id', 'INTEGER REFERENCES positionen(id) ON DELETE SET NULL'],
+  // Ein Muster kann zusaetzlich an den Betrag gebunden sein - bei Google
+  // etwa unterscheidet erst die Groessenordnung Werbung von Software.
+  ['lieferant_muster', 'betrag_min_cents', 'INTEGER'],
+  ['lieferant_muster', 'betrag_max_cents', 'INTEGER'],
 ]) {
   const vorhanden = db.prepare(`PRAGMA table_info(${tabelle})`).all().some((s) => s.name === spalte);
   if (!vorhanden) db.exec(`ALTER TABLE ${tabelle} ADD COLUMN ${spalte} ${definition}`);

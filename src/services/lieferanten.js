@@ -1,6 +1,7 @@
 import { all, get, run } from '../db.js';
 import { encryptSecret, maskSecret, vaultEnabled } from './vault.js';
 import { normalizeName } from './bank/grouping.js';
+import { parseAmountToCents } from './bank/csv.js';
 
 // Der Lieferant ist die zentrale Einheit der Monatsarbeit. Zu jedem Lieferanten
 // gehoeren Zugang und Portaladresse, und - das ist der eigentliche Punkt - die
@@ -20,7 +21,9 @@ export function listeLieferanten({ nurAktive = false } = {}) {
   );
   for (const l of zeilen) {
     l.secret = maskSecret(l.hat_secret);
-    l.muster = all('SELECT id, muster FROM lieferant_muster WHERE lieferant_id = ? ORDER BY id', l.id);
+    l.muster = all(
+      'SELECT id, muster, betrag_min_cents, betrag_max_cents FROM lieferant_muster WHERE lieferant_id = ? ORDER BY id',
+      l.id).map((m) => ({ ...m, text: musterText(m) }));
   }
   return zeilen;
 }
@@ -83,15 +86,73 @@ export function loesche(id) {
   return { geloescht: Number(id) };
 }
 
+/**
+ * Liest ein Muster ein. Neben dem reinen Text ist eine Betragsbedingung
+ * moeglich - manche Lieferanten lassen sich nur an der Groessenordnung
+ * auseinanderhalten:
+ *
+ *   google              trifft jede Google-Buchung
+ *   google >1000        nur Buchungen ueber 1.000 EUR
+ *   google <1000        nur Buchungen darunter
+ *   google 50-200       nur Buchungen in dieser Spanne
+ *
+ * Verglichen wird der Betrag, nicht das Vorzeichen: eine Abbuchung von
+ * 2.150 EUR steht im Auszug als -2.150,00.
+ */
+export function parseMuster(eingabe) {
+  const roh = String(eingabe || '').trim();
+  if (!roh) return null;
+
+  let text = roh;
+  let min = null;
+  let max = null;
+
+  const spanne = roh.match(/^(.*?)\s+([\d.,]+)\s*-\s*([\d.,]+)$/);
+  const grenze = roh.match(/^(.*?)\s*([<>])\s*([\d.,]+)$/);
+
+  if (spanne) {
+    text = spanne[1];
+    min = parseAmountToCents(spanne[2]);
+    max = parseAmountToCents(spanne[3]);
+  } else if (grenze) {
+    text = grenze[1];
+    const wert = parseAmountToCents(grenze[3]);
+    if (grenze[2] === '>') min = wert; else max = wert;
+  }
+
+  const muster = normalizeName(text);
+  if (muster.length < 2) return null;
+  return { muster, betrag_min_cents: min, betrag_max_cents: max };
+}
+
+// Fuer die Anzeige zurueck in die Schreibweise der Eingabe.
+export function musterText(m) {
+  const euro = (c) => (c / 100).toLocaleString('de-DE', { minimumFractionDigits: 0 });
+  if (m.betrag_min_cents != null && m.betrag_max_cents != null) {
+    return `${m.muster} ${euro(m.betrag_min_cents)}-${euro(m.betrag_max_cents)}`;
+  }
+  if (m.betrag_min_cents != null) return `${m.muster} >${euro(m.betrag_min_cents)}`;
+  if (m.betrag_max_cents != null) return `${m.muster} <${euro(m.betrag_max_cents)}`;
+  return m.muster;
+}
+
 export function setzeMuster(lieferantId, muster) {
   run('DELETE FROM lieferant_muster WHERE lieferant_id = ?', Number(lieferantId));
-  const sauber = [...new Set((muster || [])
-    .map((m) => normalizeName(m))
-    .filter((m) => m.length >= 2))];
-  for (const m of sauber) {
-    run('INSERT INTO lieferant_muster (lieferant_id, muster) VALUES (?, ?)', Number(lieferantId), m);
+  const gesehen = new Set();
+  const angelegt = [];
+
+  for (const eintrag of muster || []) {
+    const geparst = parseMuster(eintrag);
+    if (!geparst) continue;
+    const schluessel = `${geparst.muster}|${geparst.betrag_min_cents}|${geparst.betrag_max_cents}`;
+    if (gesehen.has(schluessel)) continue;
+    gesehen.add(schluessel);
+    run(`INSERT INTO lieferant_muster (lieferant_id, muster, betrag_min_cents, betrag_max_cents)
+         VALUES (?, ?, ?, ?)`,
+      Number(lieferantId), geparst.muster, geparst.betrag_min_cents, geparst.betrag_max_cents);
+    angelegt.push(geparst);
   }
-  return sauber;
+  return angelegt;
 }
 
 // --- Zuordnung der Buchungen -------------------------------------------------
@@ -104,10 +165,18 @@ export function setzeMuster(lieferantId, muster) {
  */
 export function ordneBuchungenZu(periodId) {
   const muster = all(
-    'SELECT m.muster, m.lieferant_id FROM lieferant_muster m JOIN lieferanten l ON l.id = m.lieferant_id',
-  ).sort((a, b) => b.muster.length - a.muster.length);
+    `SELECT m.muster, m.lieferant_id, m.betrag_min_cents, m.betrag_max_cents
+     FROM lieferant_muster m JOIN lieferanten l ON l.id = m.lieferant_id`,
+  ).sort((a, b) => {
+    // Der genauere Text gewinnt. Steht "Google Workspace" im Buchungstext,
+    // schlaegt das jede Betragsregel - eine ausdrueckliche Angabe wiegt
+    // schwerer als eine Groessenordnung.
+    if (b.muster.length !== a.muster.length) return b.muster.length - a.muster.length;
+    // Bei gleich langem Text entscheidet die engere Bedingung.
+    return grenzen(b) - grenzen(a);
+  });
 
-  const buchungen = all('SELECT id, counterparty, purpose FROM bank_tx WHERE period_id = ?', Number(periodId));
+  const buchungen = all('SELECT id, counterparty, purpose, amount_cents FROM bank_tx WHERE period_id = ?', Number(periodId));
   let zugeordnet = 0;
 
   for (const tx of buchungen) {
@@ -119,12 +188,25 @@ export function ordneBuchungenZu(periodId) {
     const haendler = `${normalizeName(tx.counterparty)} ${normalizeName(tx.purpose)}`.trim();
     const roh = `${normalizeName(tx.counterparty, { psp: false })} ${normalizeName(tx.purpose, { psp: false })}`.trim();
 
-    const treffer = muster.find((m) => haendler.includes(m.muster))
-                 ?? muster.find((m) => roh.includes(m.muster));
+    const passt = (m, text) => text.includes(m.muster) && betragPasst(m, tx.amount_cents);
+    const treffer = muster.find((m) => passt(m, haendler))
+                 ?? muster.find((m) => passt(m, roh));
     run('UPDATE bank_tx SET lieferant_id = ? WHERE id = ?', treffer ? treffer.lieferant_id : null, tx.id);
     if (treffer) zugeordnet++;
   }
   return { buchungen: buchungen.length, zugeordnet, ohne: buchungen.length - zugeordnet };
+}
+
+const grenzen = (m) => (m.betrag_min_cents != null ? 1 : 0) + (m.betrag_max_cents != null ? 1 : 0);
+
+// Verglichen wird der Betrag ohne Vorzeichen - Ausgaben stehen im Auszug negativ.
+export function betragPasst(m, cents) {
+  if (m.betrag_min_cents == null && m.betrag_max_cents == null) return true;
+  if (cents == null) return false;
+  const betrag = Math.abs(cents);
+  if (m.betrag_min_cents != null && betrag <= m.betrag_min_cents) return false;
+  if (m.betrag_max_cents != null && betrag > m.betrag_max_cents) return false;
+  return true;
 }
 
 // --- Monatsübersicht ---------------------------------------------------------

@@ -14,8 +14,36 @@ von Hand.
 | **Direkt zu den Rechnungen** | Adresse, die nach der Anmeldung angesteuert wird. Erspart das Durchklicken. |
 | **Benutzername, Passwort** | Werden beim Anmelden eingesetzt. Das Passwort verlässt den Server nicht. |
 | **Verlangt Bestätigungscode** | Markiert Zwei-Faktor. Kein Hindernis — du gibst den Code im offenen Fenster ein. |
-| **Erkennungsmuster** | Woran Buchungen im Kontoauszug erkannt werden. Leer = der Name selbst. |
+| **Erkennungsmuster** | Woran Buchungen im Kontoauszug erkannt werden. Leer = der Name selbst. Siehe unten. |
 | **Belege je Monat** | Optionaler Sollwert; die Ansicht zeigt dann `1/3` statt nur `1`. |
+
+## Erkennungsmuster
+
+Ein Muster ist ein Textstück, das im Empfänger oder Verwendungszweck vorkommt.
+Wo der Text allein nicht reicht, lässt es sich an den Betrag binden:
+
+| Schreibweise | Trifft |
+|---|---|
+| `google ads` | jede Buchung, in der das vorkommt |
+| `google >1000` | nur Google-Buchungen über 1.000 € |
+| `google <1000` | nur darunter (1.000,00 € selbst gehört noch dazu) |
+| `google 50-200` | nur in dieser Spanne |
+
+Verglichen wird der Betrag ohne Vorzeichen — eine Abbuchung von 2.150 € steht
+im Auszug als −2.150,00.
+
+**Ein ausdrücklicher Buchungstext hat Vorrang vor der Betragsregel.** Eine
+Buchung „Google Workspace Jahresrechnung" über 2.400 € landet bei Workspace,
+obwohl die Betragsregel auf Werbung zeigt. Sonst würde jede Jahresrechnung
+falsch verbucht.
+
+Das ist der Grund, warum bei Google beides hinterlegt ist: die sprechenden
+Muster `google ads` und `google workspace` für die Fälle, in denen der Text es
+verrät, und `google >1000` / `google <1000` für alles andere.
+
+Eine Mail trägt keinen Betrag. Beim Durchsuchen des Postfachs bleiben
+betragsgebundene Muster deshalb außen vor, solange sie auf verschiedene
+Lieferanten zeigen — dann bleibt die Zuordnung offen und du entscheidest.
 
 ## Wie die Anmeldung funktioniert
 
