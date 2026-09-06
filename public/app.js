@@ -627,6 +627,27 @@ $('#ab-rechnen').onclick = async (e) => {
   e.target.disabled = false;
 };
 
+// Fuer den Altbestand: Dateien, die vor dem Umschalten auf Drive lokal
+// abgelegt oder vor dem Auslesen hochgeladen wurden.
+$('#ab-nachtragen').onclick = async (e) => {
+  e.target.disabled = true;
+  const alt = e.target.textContent;
+  e.target.textContent = 'Liest nach …';
+  try {
+    const r = await senden(`/api/periods/${zustand.periodeId}/nachtragen`, {});
+    const teile = [`${r.geprueft} Dateien geprüft`];
+    if (r.verschoben) teile.push(`${r.verschoben} in die Ablage übertragen`);
+    teile.push(`${r.ausgelesen} ausgelesen`);
+    if (r.uebersprungen) teile.push(`${r.uebersprungen} keine Rechnung`);
+    if (r.fehler.length) teile.push(`${r.fehler.length} fehlgeschlagen`);
+    melde(teile.join(', ') + '.', r.fehler.length ? 'fehler' : 'erfolg');
+    if (r.fehler.length) console.warn('Nachtragen:', r.fehler);
+    await Promise.all([ladeAbgleich(), ladeMonat(), ladeLieferanten()]);
+  } catch (err) { fehlerBehandeln(err); }
+  e.target.disabled = false;
+  e.target.textContent = alt;
+};
+
 $('#ab-holen').onclick = async (e) => {
   e.target.disabled = true;
   const alt = e.target.textContent;

@@ -17,7 +17,8 @@
     "seed:checkliste": "node src/seed-checkliste.js",
     "mail:check": "node src/mail-check.js",
     "mail:test": "node src/mail-test.js",
-    "mail:suche": "node src/mail-suche.js"
+    "mail:suche": "node src/mail-suche.js",
+    "nachtragen": "node src/nachtragen.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",

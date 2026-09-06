@@ -17,6 +17,7 @@ import * as portal from './services/browser/portal.js';
 import * as postfach from './services/postfach.js';
 import { ergaenzeBelegdaten } from './services/belegdaten.js';
 import * as abgleich from './services/abgleich.js';
+import { nachtragen } from './services/nachtragen.js';
 import * as checkliste from './services/checkliste.js';
 import { erstelleBewirtungsbeleg, erstelleSpesenabrechnung, kombiniere } from './services/docgen.js';
 import { analysiereQuittung } from './services/beleganalyse.js';
@@ -510,6 +511,11 @@ router.post('/api/periods/:id/abgleich', (req, res) => {
   const lauf = abgleich.gleicheAb(periodId);
   json(res, { ...lauf, ...abgleich.uebersicht(periodId) });
 });
+
+// Altbestand nachziehen: lokal liegende Dateien ins eingestellte Backend
+// heben und noch nicht ausgelesene Belege auslesen.
+router.post('/api/periods/:id/nachtragen', async (req, res) =>
+  json(res, await nachtragen(Number(req.params.id))));
 
 router.post('/api/zuordnungen/:id/entscheiden', async (req, res) => {
   const { status } = await leseJson(req);
