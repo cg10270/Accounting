@@ -67,6 +67,30 @@ describe('Zuordnung der Buchungen', () => {
     assert.equal(get('SELECT lieferant_id FROM bank_tx').lieferant_id, aws.id);
   });
 
+  // Stripe ist bei uns beides: Zahlungsdienstleister und eigener Lieferant.
+  // Würde der Name nur als Dienstleister-Präfix gelesen, bliebe von
+  // "Stripe Payments" nur "payments" übrig und die Buchung fiele durch.
+  test('ein Lieferant, der zugleich Zahlungsdienstleister ist, wird erkannt', () => {
+    const stripe = lf.legeAn({ name: 'Stripe' });
+    buchung('Stripe Payments UK Ltd', 'Auszahlung August', -1240000);
+    buchung('STRIPE', 'Gebühren 08/2026', -4500);
+    assert.equal(lf.ordneBuchungenZu(periodId).zugeordnet, 2);
+    assert.equal(lf.monatsuebersicht(periodId).lieferanten[0].bank_anzahl, 2);
+    assert.equal(get('SELECT lieferant_id FROM bank_tx LIMIT 1').lieferant_id, stripe.id);
+  });
+
+  // Umgekehrt darf das nicht dazu führen, dass eine Zahlung über einen
+  // Dienstleister beim Dienstleister statt beim Händler landet.
+  test('eine Zahlung über einen Dienstleister landet beim Händler', () => {
+    const paypal = lf.legeAn({ name: 'PayPal' });
+    const google = lf.legeAn({ name: 'Google' });
+    buchung('PayPal *Google', 'Play Store', -999);
+    lf.ordneBuchungenZu(periodId);
+    assert.equal(get('SELECT lieferant_id FROM bank_tx').lieferant_id, google.id,
+      'der abgestreifte Händlername hat Vorrang vor dem Dienstleister');
+    assert.notEqual(get('SELECT lieferant_id FROM bank_tx').lieferant_id, paypal.id);
+  });
+
   test('nicht zugeordnete Buchungen werden ausgewiesen, nicht verschluckt', () => {
     lf.legeAn({ name: 'Telekom' });
     buchung('Telekom Deutschland GmbH', 'Mobilfunk', -8420);

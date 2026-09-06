@@ -21,7 +21,19 @@ Alle Endpunkte liefern JSON. Fehler kommen als `{ "fehler": "…" }` mit Status 
 | PATCH | `/api/lieferanten/:id` | Felder ändern. `secret` weglassen = Passwort unverändert, `""` = löschen |
 | DELETE | `/api/lieferanten/:id` | Löschen. Belege und Buchungen bleiben, verlieren aber die Zuordnung |
 
-## Monatsansicht
+## Checkliste
+| Methode | Pfad | Zweck |
+|---|---|---|
+| GET | `/api/periods/:id/checkliste` | Die Hauptansicht: Bereiche → Lieferantengruppen → Positionen, mit Bankabgleich je Gruppe |
+| GET | `/api/bereiche` | Bereiche mit ihren Positionen |
+| POST | `/api/bereiche` | `{name, nummer?}` |
+| POST | `/api/positionen` | `{bereich_id, name, lieferant_id?, hinweis?}` |
+| PATCH | `/api/positionen/:id` | Felder ändern; `aktiv: 0` blendet aus, ohne die Historie zu verlieren |
+| DELETE | `/api/positionen/:id` | Position löschen |
+| POST | `/api/periods/:pid/positionen/:posid/status` | `{status: "offen"\|"erledigt"\|"entfaellt", notiz?, von?}` |
+| POST | `/api/periods/:pid/positionen/:posid/dateien` | Beleg hochladen; zählt zugleich beim Lieferanten der Position |
+
+## Lieferantenansicht (flach)
 | Methode | Pfad | Zweck |
 |---|---|---|
 | GET | `/api/periods/:id/monat` | Je Lieferant Bank gegen Belege, plus Buchungen ohne Zuordnung und Summen |

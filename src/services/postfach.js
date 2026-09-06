@@ -96,9 +96,8 @@ export async function durchsuche(periodId, { nachlaufTage = 10 } = {}) {
 // Ordnet über Absender, Betreff und Dateiname zu. Das längste passende Muster
 // gewinnt, damit ein genauerer Treffer einen allgemeinen überstimmt.
 function rateLieferant(nachricht, anhang, lieferanten) {
-  const heuhaufen = normalizeName(
-    `${nachricht.from || ''} ${nachricht.subject || ''} ${anhang.filename || ''}`,
-  );
+  const roh = `${nachricht.from || ''} ${nachricht.subject || ''} ${anhang.filename || ''}`;
+  const heuhaufen = `${normalizeName(roh)} ${normalizeName(roh, { psp: false })}`;
   let bester = null;
   for (const l of lieferanten) {
     for (const { muster } of l.muster) {

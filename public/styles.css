@@ -171,3 +171,45 @@ details.gruppe > summary:hover { background: var(--flaeche-2); }
 /* Erledigte oder bereits übernommene Zeilen treten zurück */
 tr.ist-erledigt > td { opacity: .55; }
 tr.lf-zeile > td { vertical-align: middle; }
+
+/* --- Checkliste --- */
+.bereich { border-bottom: 1px solid var(--rand); }
+.bereich:last-child { border-bottom: 0; }
+.bereich-kopf {
+  display: flex; align-items: center; gap: 10px; padding: 11px 16px; cursor: pointer;
+  background: var(--flaeche); user-select: none;
+}
+.bereich-kopf:hover { background: var(--flaeche-2); }
+.bereich-kopf .pfeil { color: var(--text-leise); width: 12px; }
+.bereich-kopf .nummer {
+  width: 20px; height: 20px; border-radius: 5px; background: var(--flaeche-2);
+  color: var(--text-leise); font-size: 11px; font-weight: 600;
+  display: grid; place-items: center;
+}
+.bereich-kopf .titel { flex: 1; font-weight: 600; }
+.bereich-inhalt { padding-bottom: 6px; }
+
+.gruppe + .gruppe { margin-top: 2px; }
+.gruppe-kopf {
+  display: flex; align-items: center; gap: 14px; padding: 7px 16px 7px 46px;
+  background: var(--flaeche-2);
+}
+.gruppe-kopf .name { flex: 1; font-weight: 500; font-size: 13px; }
+.gruppe-kopf .zahl { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.position {
+  display: grid; grid-template-columns: 18px 1fr auto; gap: 10px; align-items: start;
+  padding: 6px 16px 6px 46px;
+}
+.position.eingerueckt { padding-left: 62px; }
+.position:hover { background: var(--flaeche-2); }
+.position .pos-name { cursor: pointer; }
+.position .pos-dateien { cursor: pointer; white-space: nowrap; }
+.position input[type=checkbox] { width: auto; margin-top: 3px; }
+.position .pos-detail { grid-column: 2 / -1; padding: 8px 0 10px; }
+.position.ist-erledigt > .pos-name { opacity: .5; text-decoration: line-through; }
+.position.ist-erledigt > .pos-name .klein-text { text-decoration: none; }
+.gruppe-kopf.kompakt { padding-left: 46px; gap: 10px; }
+.gruppe-kopf.kompakt input[type=checkbox] { width: auto; }
+.gruppe-kopf.kompakt .name { cursor: pointer; font-weight: 400; }
+.gruppe.ist-kompakt .position { padding-left: 62px; }

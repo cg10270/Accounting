@@ -10,7 +10,17 @@ const RECHTSFORMEN = [
 ];
 const ZAHLUNGSDIENSTLEISTER = ['paypal', 'stripe', 'klarna', 'adyen', 'sumup', 'mollie', 'shopify'];
 
-export function normalizeName(value) {
+/**
+ * @param {string} value
+ * @param {object} [optionen]
+ * @param {boolean} [optionen.psp=true]  Zahlungsdienstleister-Praefix abstreifen
+ *
+ * Das Abstreifen ist noetig, damit "PayPal *Google" unter Google faellt.
+ * Es darf aber nicht die einzige Lesart sein: Stripe zum Beispiel ist fuer
+ * uns beides - Zahlungsdienstleister UND eigener Lieferant mit Gebuehren und
+ * Auszahlungen. Deshalb gibt es beide Formen, und die Zuordnung prueft beide.
+ */
+export function normalizeName(value, { psp = true } = {}) {
   let s = String(value || '')
     .toLowerCase()
     .replace(/[äöüß]/g, (c) => ({ ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' }[c]))
@@ -19,9 +29,11 @@ export function normalizeName(value) {
     .trim();
 
   // "PayPal *Google" oder "PP.1234.PP / Google" -> "google"
-  for (const psp of ZAHLUNGSDIENSTLEISTER) {
-    const m = s.match(new RegExp(`^(?:pp\\s+\\d+\\s+pp\\s+)?${psp}\\s+(.+)$`));
-    if (m && m[1].length > 2) { s = m[1]; break; }
+  if (psp) {
+    for (const dienstleister of ZAHLUNGSDIENSTLEISTER) {
+      const m = s.match(new RegExp(`^(?:pp\\s+\\d+\\s+pp\\s+)?${dienstleister}\\s+(.+)$`));
+      if (m && m[1].length > 2) { s = m[1]; break; }
+    }
   }
 
   s = s.split(' ')

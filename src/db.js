@@ -193,6 +193,39 @@ CREATE TABLE IF NOT EXISTS lieferant_monat (
   UNIQUE (lieferant_id, period_id)
 );
 
+-- Die Checkliste: Bereiche gliedern, Positionen werden abgehakt.
+-- Ein Lieferant kann mehrere Positionen tragen (Stripe liefert Rechnungen,
+-- Gutschriften, Payout Report ... aus einem einzigen Portal), eine Position
+-- kann auch ganz ohne Lieferanten stehen (z.B. "Monatspruefung").
+CREATE TABLE IF NOT EXISTS bereiche (
+  id       INTEGER PRIMARY KEY,
+  nummer   INTEGER NOT NULL,
+  name     TEXT    NOT NULL UNIQUE,
+  position INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS positionen (
+  id           INTEGER PRIMARY KEY,
+  bereich_id   INTEGER NOT NULL REFERENCES bereiche(id) ON DELETE CASCADE,
+  lieferant_id INTEGER REFERENCES lieferanten(id) ON DELETE SET NULL,
+  name         TEXT    NOT NULL,
+  hinweis      TEXT    NOT NULL DEFAULT '',
+  position     INTEGER NOT NULL DEFAULT 0,
+  aktiv        INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_positionen_bereich ON positionen(bereich_id);
+
+CREATE TABLE IF NOT EXISTS position_monat (
+  id           INTEGER PRIMARY KEY,
+  position_id  INTEGER NOT NULL REFERENCES positionen(id) ON DELETE CASCADE,
+  period_id    INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+  status       TEXT    NOT NULL DEFAULT 'offen',   -- offen | erledigt | entfaellt
+  erledigt_am  TEXT,
+  erledigt_von TEXT,
+  notiz        TEXT    NOT NULL DEFAULT '',
+  UNIQUE (position_id, period_id)
+);
+
 -- Merkt, welcher Mailanhang schon uebernommen wurde. Ohne das entstuenden
 -- bei jedem Durchlauf des Postfachs Dubletten.
 CREATE TABLE IF NOT EXISTS postfach_import (
@@ -219,6 +252,7 @@ for (const [tabelle, spalte, definition] of [
   ['artifacts', 'web_url', "TEXT NOT NULL DEFAULT ''"],
   ['artifacts', 'lieferant_id', 'INTEGER REFERENCES lieferanten(id) ON DELETE SET NULL'],
   ['bank_tx', 'lieferant_id', 'INTEGER REFERENCES lieferanten(id) ON DELETE SET NULL'],
+  ['artifacts', 'position_id', 'INTEGER REFERENCES positionen(id) ON DELETE SET NULL'],
 ]) {
   const vorhanden = db.prepare(`PRAGMA table_info(${tabelle})`).all().some((s) => s.name === spalte);
   if (!vorhanden) db.exec(`ALTER TABLE ${tabelle} ADD COLUMN ${spalte} ${definition}`);

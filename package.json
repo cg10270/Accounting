@@ -12,7 +12,8 @@
     "dev": "node --watch src/server.js",
     "seed": "node src/seed.js",
     "google:check": "node src/google-check.js",
-    "test": "node --test \"test/**/*.test.js\""
+    "test": "node --test \"test/**/*.test.js\"",
+    "seed:checkliste": "node src/seed-checkliste.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",

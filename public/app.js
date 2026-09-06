@@ -12,7 +12,7 @@ const zustand = {
   status: null,
   monat: null,
   lieferanten: [],
-  offen: new Set(),      // aufgeklappte Lieferantenzeilen
+  offen: new Set(),      // aufgeklappte Bereiche (b<id>) und Positionen (p<id>)
 };
 
 // --- Hilfen -----------------------------------------------------------------
@@ -241,11 +241,11 @@ async function ladeDateienHoch(taskId, dateien) {
   await ladeAufgaben();
 }
 
-// --- Monatsübersicht: je Lieferant Bank gegen Belege -------------------------
+// --- Checkliste: Bereiche, Lieferanten, Positionen ---------------------------
 
 async function ladeMonat() {
   try {
-    zustand.monat = await holen(`/api/periods/${zustand.periodeId}/monat`);
+    zustand.monat = await holen(`/api/periods/${zustand.periodeId}/checkliste`);
     zeichneMonat();
   } catch (err) { fehlerBehandeln(err); }
 }
@@ -256,153 +256,152 @@ function zeichneMonat() {
   const s = d.summen;
 
   $('#monat-summen').textContent =
-    `${s.erledigt}/${s.lieferanten} erledigt · Bank ${euro(s.bank_summe_cents)} · ` +
+    `${s.erledigt}/${s.positionen} erledigt · Bank ${euro(s.bank_summe_cents)} · ` +
     `Belege ${euro(s.belege_summe_cents)} · offene Differenz ${euro(s.offene_differenz_cents)}`;
 
-  $('#monat-tabelle').innerHTML = d.lieferanten.length ? `
-    <table>
-      <thead><tr>
-        <th style="width:26px"></th><th>Lieferant</th>
-        <th class="rechts">Bank</th><th class="rechts">Belege</th><th class="rechts">Differenz</th>
-        <th style="width:96px">Erledigt</th><th style="width:150px"></th>
-      </tr></thead>
-      <tbody>${d.lieferanten.map(zeileFuerLieferant).join('')}</tbody>
-    </table>` : '<div class="leer">Noch keine Lieferanten angelegt.</div>';
+  $('#monat-tabelle').innerHTML = d.bereiche.length
+    ? d.bereiche.map(zeichneBereich).join('')
+    : '<div class="leer">Noch keine Checkliste angelegt — <code>npm run seed:checkliste</code> ausführen.</div>';
 
   const ohne = $('#karte-ohne-zuordnung');
   ohne.hidden = !d.ohne_zuordnung.length;
-  if (d.ohne_zuordnung.length) {
-    $('#ohne-zuordnung').innerHTML = `
-      <table><thead><tr><th>Datum</th><th>Empfänger / Zweck</th><th class="rechts">Betrag</th><th style="width:280px"></th></tr></thead>
-      <tbody>${d.ohne_zuordnung.map((b) => `
-        <tr>
-          <td class="zahl klein-text">${datumDe(b.booking_date)}</td>
-          <td class="klein-text"><strong>${esc(b.counterparty || '—')}</strong><br><span class="leise">${esc(b.purpose)}</span></td>
-          <td class="rechts zahl">${euro(b.amount_cents)}</td>
-          <td class="reihe" style="justify-content:flex-end">
-            <select class="zu-lieferant klein-text" data-tx="${b.id}" style="width:150px">
-              <option value="">neu anlegen …</option>
-              ${zustand.lieferanten.map((l) => `<option value="${l.id}">${esc(l.name)}</option>`).join('')}
-            </select>
-            <button class="knopf leise klein tx-zuordnen" data-tx="${b.id}">Zuordnen</button>
-          </td>
-        </tr>`).join('')}</tbody></table>`;
-  }
+  if (d.ohne_zuordnung.length) zeichneOhneZuordnung(d.ohne_zuordnung);
   verdrahteMonat();
 }
 
-function zeileFuerLieferant(l) {
-  const aufgeklappt = zustand.offen.has(l.id);
-  const diff = l.status === 'erledigt' ? '<span class="leise">—</span>'
-    : l.ruhig ? '<span class="leise">keine Bewegung</span>'
-    : `<span class="${l.stimmt ? 'diff-ok' : 'diff-offen'}">${l.stimmt ? '✓ ' : 'Δ '}${euro(l.differenz_cents)}</span>`;
-
-  const zeile = `
-    <tr class="lf-zeile ${l.status === 'erledigt' ? 'ist-erledigt' : ''}" data-id="${l.id}">
-      <td class="lf-auf" data-id="${l.id}" style="cursor:pointer;color:var(--text-leise)">${aufgeklappt ? '▾' : '▸'}</td>
-      <td>
-        <strong>${esc(l.name)}</strong>
-        ${l.has_mfa ? '<span class="badge wartet" style="margin-left:6px">Code</span>' : ''}
-        ${l.notiz ? `<br><span class="klein-text leise">${esc(l.notiz)}</span>` : ''}
-      </td>
-      <td class="rechts zahl">${l.bank_anzahl ? `${l.bank_anzahl} ·<br>${euro(l.bank_summe_cents)}` : '<span class="leise">—</span>'}</td>
-      <td class="rechts zahl">${l.belege_anzahl ? `${l.belege_anzahl}${l.erwartet ? '/' + l.erwartet : ''} ·<br>${euro(l.belege_summe_cents)}` : '<span class="leise">—</span>'}</td>
-      <td class="rechts zahl">${diff}</td>
-      <td><label class="reihe klein-text" style="gap:6px">
-        <input type="checkbox" class="lf-erledigt" data-id="${l.id}" ${l.status === 'erledigt' ? 'checked' : ''} style="width:auto">
-        ${l.erledigt_am ? `<span class="leise" title="${esc(l.erledigt_am)}">✓</span>` : ''}
-      </label></td>
-      <td class="rechts">
-        <button class="knopf klein lf-portal" data-id="${l.id}" ${l.url ? '' : 'disabled title="Keine Portaladresse hinterlegt"'}>Portal öffnen</button>
-      </td>
-    </tr>`;
-
-  return zeile + (aufgeklappt ? detailZeile(l) : '');
+function zeichneBereich(b) {
+  const zu = zustand.offen.has(`b${b.id}`);
+  const fertig = b.erledigt === b.anzahl;
+  return `
+    <div class="bereich">
+      <div class="bereich-kopf" data-b="${b.id}">
+        <span class="pfeil">${zu ? '▸' : '▾'}</span>
+        <span class="nummer">${b.nummer}</span>
+        <span class="titel">${esc(b.name)}</span>
+        <span class="klein-text ${fertig ? 'diff-ok' : 'leise'}">${b.erledigt}/${b.anzahl}</span>
+      </div>
+      ${zu ? '' : `<div class="bereich-inhalt">${b.gruppen.map(zeichneGruppe).join('')}</div>`}
+    </div>`;
 }
 
-function detailZeile(l) {
-  const belege = (l.belege || []);
-  const buchungen = (l.buchungen || []);
+// Trägt ein Lieferant nur eine Position gleichen Namens, wäre eine eigene
+// Kopfzeile bloß eine Wiederholung - dann steht das Häkchen in der Kopfzeile.
+function nurEineZeile(g) {
+  if (!g.lieferant || g.positionen.length !== 1) return false;
+  const a = g.lieferant.name.toLowerCase();
+  const b = g.positionen[0].name.toLowerCase();
+  return a === b || b.includes(a) || a.includes(b);
+}
+
+function zeichneGruppe(g) {
+  const l = g.lieferant;
+  const kompakt = nurEineZeile(g);
+  const p = g.positionen[0];
+
+  // Ohne Lieferanten gibt es nichts abzugleichen - dann stehen die
+  // Positionen ohne Kopfzeile für sich.
+  const kopf = !l ? '' : `
+    <div class="gruppe-kopf ${kompakt ? 'kompakt' : ''}">
+      ${kompakt ? `<input type="checkbox" class="pos-haken" data-id="${p.id}" ${p.status === 'erledigt' ? 'checked' : ''}>` : ''}
+      <span class="name ${kompakt ? 'pos-name' : ''}" ${kompakt ? `data-id="${p.id}"` : ''}>${esc(kompakt ? p.name : l.name)}
+        ${l.has_mfa ? '<span class="badge wartet" style="margin-left:6px">Code</span>' : ''}
+        ${kompakt && p.hinweis ? `<br><span class="klein-text leise">${esc(p.hinweis)}</span>` : ''}</span>
+      <span class="zahl klein-text">${g.bank_anzahl ? `Bank ${g.bank_anzahl} · ${euro(g.bank_summe_cents)}` : '<span class="leise">keine Buchung</span>'}</span>
+      <span class="zahl klein-text">${g.belege_anzahl ? `Belege ${g.belege_anzahl} · ${euro(g.belege_summe_cents)}` : '<span class="leise">keine Belege</span>'}</span>
+      <span class="zahl ${g.stimmt ? 'diff-ok' : g.ruhig ? 'leise' : 'diff-offen'}">
+        ${g.ruhig ? '—' : (g.stimmt ? '✓ ' : 'Δ ') + euro(g.differenz_cents)}</span>
+      <button class="knopf klein lf-portal" data-id="${l.id}" ${l.url ? '' : 'disabled title="Keine Portaladresse hinterlegt"'}>Portal</button>
+    </div>`;
+  const zeilen = kompakt
+    ? (zustand.offen.has(`p${p.id}`) ? `<div class="position eingerueckt">${detailBlock(p)}</div>` : '')
+    : g.positionen.map((pos) => zeichnePosition(pos, Boolean(l))).join('');
+  return `<div class="gruppe ${kompakt ? 'ist-kompakt' : ''}">${kopf}${zeilen}</div>`;
+}
+
+function zeichnePosition(p, hatLieferant) {
+  const offen = zustand.offen.has(`p${p.id}`);
   return `
-    <tr class="lf-detail"><td></td><td colspan="6" style="background:var(--flaeche-2)">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;padding:6px 0 12px">
-        <div>
-          <h3 style="font-size:12px;margin:0 0 6px;color:var(--text-leise)">BUCHUNGEN</h3>
-          ${buchungen.length ? `<table>${buchungen.map((b) => `
-            <tr><td class="klein-text zahl" style="width:78px">${datumDe(b.booking_date)}</td>
-                <td class="klein-text">${esc(b.purpose || b.counterparty)}</td>
-                <td class="rechts zahl klein-text">${euro(b.amount_cents)}</td></tr>`).join('')}</table>`
-            : '<div class="klein-text leise">Keine Buchungen in diesem Monat.</div>'}
-        </div>
-        <div>
-          <h3 style="font-size:12px;margin:0 0 6px;color:var(--text-leise)">BELEGE</h3>
-          ${belege.length ? `<table>${belege.map((b) => `
-            <tr><td class="klein-text"><a href="/api/dateien/${b.id}/inhalt" target="_blank">${esc(b.filename)}</a></td>
-                <td class="rechts" style="width:110px">
-                  <input type="number" step="0.01" class="lf-betrag klein-text" data-id="${b.id}"
-                         value="${b.amount_cents ? (b.amount_cents / 100).toFixed(2) : ''}" placeholder="Betrag">
-                </td>
-                <td style="width:28px"><button class="knopf gefahr klein lf-datei-weg" data-id="${b.id}">×</button></td></tr>`).join('')}</table>`
-            : '<div class="klein-text leise">Noch keine Belege.</div>'}
-          <div class="ablegen lf-ablegen" data-id="${l.id}" style="margin-top:10px;padding:12px">
-            Beleg hierher ziehen oder klicken
-            <input type="file" class="lf-datei" data-id="${l.id}" multiple hidden>
-          </div>
-        </div>
+    <div class="position ${p.status !== 'offen' ? 'ist-erledigt' : ''} ${hatLieferant ? 'eingerueckt' : ''}">
+      <input type="checkbox" class="pos-haken" data-id="${p.id}" ${p.status === 'erledigt' ? 'checked' : ''}>
+      <span class="pos-name" data-id="${p.id}">
+        ${esc(p.name)}${p.status === 'entfaellt' ? ' <span class="badge offen">entfällt</span>' : ''}
+        ${p.hinweis ? `<br><span class="klein-text leise">${esc(p.hinweis)}</span>` : ''}
+        ${p.notiz ? `<br><span class="klein-text">${esc(p.notiz)}</span>` : ''}
+      </span>
+      <span class="klein-text leise pos-dateien" data-id="${p.id}">
+        ${p.dateien.length ? `${p.dateien.length} Datei(en)` : ''}
+      </span>
+      ${offen ? detailBlock(p) : ''}
+    </div>`;
+}
+
+function detailBlock(p) {
+  return `
+    <div class="pos-detail">
+      ${p.dateien.map((f) => `
+        <div class="reihe klein-text" style="padding:3px 0">
+          <a href="/api/dateien/${f.id}/inhalt" target="_blank" style="flex:1">${esc(f.filename)}</a>
+          <input type="number" step="0.01" class="pos-betrag" data-id="${f.id}"
+                 value="${f.amount_cents ? (f.amount_cents / 100).toFixed(2) : ''}" placeholder="Betrag" style="width:100px">
+          <button class="knopf gefahr klein pos-datei-weg" data-id="${f.id}">×</button>
+        </div>`).join('')}
+      <div class="ablegen pos-ablegen" data-id="${p.id}" style="padding:10px;margin-top:6px">
+        Beleg hierher ziehen oder klicken
+        <input type="file" class="pos-datei" data-id="${p.id}" multiple hidden>
       </div>
-      <div class="reihe" style="padding-bottom:10px">
-        <input type="text" class="lf-notiz klein-text" data-id="${l.id}" value="${esc(l.notiz)}"
-               placeholder="Notiz zu diesem Monat" style="flex:1">
-        <button class="knopf leise klein lf-entfaellt" data-id="${l.id}">Entfällt diesen Monat</button>
+      <div class="reihe" style="margin-top:8px">
+        <input type="text" class="pos-notiz" data-id="${p.id}" value="${esc(p.notiz)}" placeholder="Notiz" style="flex:1">
+        <button class="knopf leise klein pos-entfaellt" data-id="${p.id}">Entfällt diesen Monat</button>
       </div>
-    </td></tr>`;
+    </div>`;
+}
+
+function zeichneOhneZuordnung(buchungen) {
+  const lieferanten = zustand.lieferanten.map((l) => `<option value="${l.id}">${esc(l.name)}</option>`).join('');
+  $('#ohne-zuordnung').innerHTML = `
+    <table><thead><tr><th>Datum</th><th>Empfänger / Zweck</th><th class="rechts">Betrag</th><th style="width:280px"></th></tr></thead>
+    <tbody>${buchungen.map((b) => `
+      <tr>
+        <td class="zahl klein-text">${datumDe(b.booking_date)}</td>
+        <td class="klein-text"><strong>${esc(b.counterparty || '—')}</strong><br><span class="leise">${esc(b.purpose)}</span></td>
+        <td class="rechts zahl">${euro(b.amount_cents)}</td>
+        <td class="reihe" style="justify-content:flex-end">
+          <select class="zu-lieferant klein-text" data-tx="${b.id}" style="width:150px">
+            <option value="">neu anlegen …</option>${lieferanten}
+          </select>
+          <button class="knopf leise klein tx-zuordnen" data-tx="${b.id}">Zuordnen</button>
+        </td>
+      </tr>`).join('')}</tbody></table>`;
 }
 
 function verdrahteMonat() {
   const neuLaden = () => Promise.all([ladeMonat(), ladeLieferanten()]);
+  const umschalten = (schluessel) => {
+    zustand.offen.has(schluessel) ? zustand.offen.delete(schluessel) : zustand.offen.add(schluessel);
+    zeichneMonat();
+  };
 
-  $$('.lf-auf').forEach((el) => {
-    el.onclick = async () => {
-      const id = Number(el.dataset.id);
-      if (zustand.offen.has(id)) { zustand.offen.delete(id); zeichneMonat(); return; }
-      zustand.offen.add(id);
-      // Einzelheiten erst beim Aufklappen holen - die Monatsliste bleibt schlank.
-      const l = zustand.monat.lieferanten.find((x) => x.id === id);
-      const d = await holen(`/api/periods/${zustand.periodeId}/lieferanten/${id}/details`).catch(() => null);
-      if (d) Object.assign(l, d);
-      zeichneMonat();
-    };
+  $$('.bereich-kopf').forEach((el) => { el.onclick = () => umschalten(`b${el.dataset.b}`); });
+  $$('.pos-name, .pos-dateien').forEach((el) => { el.onclick = () => umschalten(`p${el.dataset.id}`); });
+
+  const status = (id, daten) =>
+    senden(`/api/periods/${zustand.periodeId}/positionen/${id}/status`, daten).then(neuLaden).catch(fehlerBehandeln);
+
+  $$('.pos-haken').forEach((el) => {
+    el.onchange = () => status(el.dataset.id, { status: el.checked ? 'erledigt' : 'offen' });
+  });
+  $$('.pos-entfaellt').forEach((el) => { el.onclick = () => status(el.dataset.id, { status: 'entfaellt' }); });
+  $$('.pos-notiz').forEach((el) => {
+    el.onchange = () => status(el.dataset.id, { status: 'offen', notiz: el.value });
   });
 
-  $$('.lf-erledigt').forEach((el) => {
-    el.onchange = () => senden(
-      `/api/periods/${zustand.periodeId}/lieferanten/${el.dataset.id}/status`,
-      { status: el.checked ? 'erledigt' : 'offen' },
-    ).then(neuLaden).catch(fehlerBehandeln);
-  });
+  $$('.lf-portal').forEach((el) => { el.onclick = (e) => { e.stopPropagation(); portalOeffnen(el, Number(el.dataset.id)); }; });
 
-  $$('.lf-entfaellt').forEach((el) => {
-    el.onclick = () => senden(
-      `/api/periods/${zustand.periodeId}/lieferanten/${el.dataset.id}/status`,
-      { status: 'entfaellt' },
-    ).then(neuLaden).catch(fehlerBehandeln);
-  });
-
-  $$('.lf-notiz').forEach((el) => {
-    el.onchange = () => senden(
-      `/api/periods/${zustand.periodeId}/lieferanten/${el.dataset.id}/status`,
-      { status: 'offen', notiz: el.value },
-    ).then(neuLaden).catch(fehlerBehandeln);
-  });
-
-  $$('.lf-portal').forEach((el) => { el.onclick = () => portalOeffnen(el, Number(el.dataset.id)); });
-
-  $$('.lf-betrag').forEach((el) => {
+  $$('.pos-betrag').forEach((el) => {
     el.onchange = () => senden(`/api/dateien/${el.dataset.id}`,
-      { amount_cents: el.value === '' ? null : zuCents(el.value) }, 'PATCH')
-      .then(neuLaden).catch(fehlerBehandeln);
+      { amount_cents: el.value === '' ? null : zuCents(el.value) }, 'PATCH').then(neuLaden).catch(fehlerBehandeln);
   });
-  $$('.lf-datei-weg').forEach((el) => {
+  $$('.pos-datei-weg').forEach((el) => {
     el.onclick = async () => {
       if (!confirm('Beleg wirklich löschen?')) return;
       try { await api(`/api/dateien/${el.dataset.id}`, { method: 'DELETE' }); await neuLaden(); }
@@ -410,9 +409,8 @@ function verdrahteMonat() {
     };
   });
 
-  // Belege je Lieferant hochladen
-  $$('.lf-ablegen').forEach((zone) => {
-    const eingabe = zone.querySelector('.lf-datei');
+  $$('.pos-ablegen').forEach((zone) => {
+    const eingabe = zone.querySelector('.pos-datei');
     zone.onclick = () => eingabe.click();
     eingabe.onchange = () => belegeHochladen(Number(zone.dataset.id), [...eingabe.files]);
     zone.ondragover = (e) => { e.preventDefault(); zone.classList.add('aktiv'); };
@@ -436,10 +434,10 @@ function verdrahteMonat() {
   });
 }
 
-async function belegeHochladen(lieferantId, dateien) {
+async function belegeHochladen(positionId, dateien) {
   for (const datei of dateien) {
     try {
-      await api(`/api/periods/${zustand.periodeId}/lieferanten/${lieferantId}/dateien`, {
+      await api(`/api/periods/${zustand.periodeId}/positionen/${positionId}/dateien`, {
         method: 'POST',
         headers: { 'Content-Type': datei.type || 'application/octet-stream', 'X-Filename': encodeURIComponent(datei.name) },
         body: datei,
@@ -453,12 +451,11 @@ async function belegeHochladen(lieferantId, dateien) {
 async function portalOeffnen(knopf, lieferantId) {
   knopf.disabled = true;
   const alt = knopf.textContent;
-  knopf.textContent = 'Öffnet …';
+  knopf.textContent = '…';
   try {
     const r = await senden(`/api/periods/${zustand.periodeId}/lieferanten/${lieferantId}/portal`, {});
     const art = { ok: 'erfolg', bereits: 'erfolg', mfa: 'info', keine: 'info', fehler: 'fehler' }[r.anmeldung?.art] || 'info';
-    melde(`${r.lieferant}: ${r.anmeldung?.text || 'Fenster geöffnet.'}
-` +
+    melde(`${r.lieferant}: ${r.anmeldung?.text || 'Fenster geöffnet.'}\n` +
           'Lade die Belege im Fenster herunter — sie werden automatisch übernommen.', art);
     beobachtePortal(lieferantId);
   } catch (err) { fehlerBehandeln(err); }

@@ -111,8 +111,16 @@ export function ordneBuchungenZu(periodId) {
   let zugeordnet = 0;
 
   for (const tx of buchungen) {
-    const text = `${normalizeName(tx.counterparty)} ${normalizeName(tx.purpose)}`.trim();
-    const treffer = muster.find((m) => text.includes(m.muster));
+    // Zwei Lesarten des Buchungstexts: einmal mit abgestreiftem
+    // Zahlungsdienstleister ("PayPal *Google" -> "google"), einmal roh
+    // ("Stripe Payments" bleibt "stripe payments"). Der abgestreifte Text hat
+    // Vorrang, damit eine Zahlung ueber einen Dienstleister beim tatsaechlichen
+    // Haendler landet und nicht beim Dienstleister.
+    const haendler = `${normalizeName(tx.counterparty)} ${normalizeName(tx.purpose)}`.trim();
+    const roh = `${normalizeName(tx.counterparty, { psp: false })} ${normalizeName(tx.purpose, { psp: false })}`.trim();
+
+    const treffer = muster.find((m) => haendler.includes(m.muster))
+                 ?? muster.find((m) => roh.includes(m.muster));
     run('UPDATE bank_tx SET lieferant_id = ? WHERE id = ?', treffer ? treffer.lieferant_id : null, tx.id);
     if (treffer) zugeordnet++;
   }

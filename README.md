@@ -1,8 +1,8 @@
 # Buchhaltungsvorbereitung
 
 Webanwendung, die die monatlich wiederkehrende Belegvorbereitung strukturiert.
-Zentrale Einheit ist der **Lieferant**: je Lieferant steht nebeneinander, was die
-Bank sagt und was an Belegen vorliegt.
+Die **Checkliste** gliedert den Monat in Bereiche und Positionen; je **Lieferant**
+steht nebeneinander, was die Bank sagt und was an Belegen vorliegt.
 
 **Grundsatz von v1: Das System organisiert, der Mensch beschafft.** Ein Klick
 meldet dich im Portal an und öffnet die Rechnungsseite; was du dort
@@ -15,9 +15,39 @@ KI ist gebaut, aber für v2 geparkt (siehe [v2/](v2/README.md)).
 npm install
 cp .env.example .env      # VAULT_PASSPHRASE eintragen
 npm run seed              # Aufgabenvorlagen anlegen
+npm run seed:checkliste   # Monatscheckliste mit Bereichen und Lieferanten
 npm start                 # http://127.0.0.1:4000
 npm test                  # 48 Tests
 ```
+
+## Die Checkliste
+
+Der Monat ist in Bereiche gegliedert, darunter stehen die Positionen, die
+abgehakt werden:
+
+```
+▾ 3  Stripe                                                          2/6
+     Stripe            Bank 2 · 12.061,40 €   Belege 1 · 12.480,00 €   Δ …   [Portal]
+       ☑ Rechnungen              2 Dateien
+       ☑ Gutschriften            1 Datei
+       ☐ Offene Posten
+       ☐ Zahlungsausfälle
+       ☐ Payout Report
+       ☐ Gebührenreport
+
+▾ 6  Software & SaaS                                                 0/6
+     ☐ OpenAI            Bank 1 · −128,40 €   keine Belege   Δ 128,40 €   [Portal]
+     ☐ Anthropic (Claude) Bank 1 · −340,00 €  keine Belege   Δ 340,00 €   [Portal]
+```
+
+Der Zuschnitt folgt der Wirklichkeit: **Anmeldung und Bankabgleich gehören zum
+Lieferanten, die Häkchen zu den Positionen darunter.** Aus einem Stripe-Login
+kommen sechs verschiedene Dokumente — die will man einzeln abhaken, den
+Bankbetrag aber nur einmal sehen. Trägt ein Lieferant nur eine gleichnamige
+Position, stehen beide in einer Zeile.
+
+`npm run seed:checkliste` legt die Checkliste samt der zwölf Lieferanten an.
+Bereiche und Positionen sind danach in der Oberfläche änderbar.
 
 ## Der Monatsablauf
 

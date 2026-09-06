@@ -15,6 +15,7 @@ import * as logbuch from './services/logbook.js';
 import * as lieferanten from './services/lieferanten.js';
 import * as portal from './services/browser/portal.js';
 import * as postfach from './services/postfach.js';
+import * as checkliste from './services/checkliste.js';
 import { erstelleBewirtungsbeleg, erstelleSpesenabrechnung, kombiniere } from './services/docgen.js';
 import { analysiereQuittung } from './services/beleganalyse.js';
 
@@ -178,7 +179,48 @@ router.post('/api/lieferanten', async (req, res) => json(res, lieferanten.legeAn
 router.patch('/api/lieferanten/:id', async (req, res) => json(res, lieferanten.aendere(req.params.id, await leseJson(req))));
 router.delete('/api/lieferanten/:id', (req, res) => json(res, lieferanten.loesche(req.params.id)));
 
-// Die Hauptansicht: je Lieferant Bank gegen Belege.
+// --- Checkliste -------------------------------------------------------------
+
+// Die Hauptansicht: Bereiche, darin je Lieferant der Bankabgleich und
+// darunter die einzelnen Positionen.
+router.get('/api/periods/:id/checkliste', (req, res) => json(res, checkliste.monatsansicht(req.params.id)));
+
+router.get('/api/bereiche', (req, res) => json(res, checkliste.listeBereiche()));
+router.post('/api/bereiche', async (req, res) => json(res, checkliste.legeBereichAn(await leseJson(req)), 201));
+router.post('/api/positionen', async (req, res) => json(res, checkliste.legePositionAn(await leseJson(req)), 201));
+router.patch('/api/positionen/:id', async (req, res) => json(res, checkliste.aenderePosition(req.params.id, await leseJson(req))));
+router.delete('/api/positionen/:id', (req, res) => json(res, checkliste.loeschePosition(req.params.id)));
+
+router.post('/api/periods/:pid/positionen/:posid/status', async (req, res) => {
+  const { status, notiz, von } = await leseJson(req);
+  json(res, checkliste.setzeStatus(req.params.posid, req.params.pid, status, { von, notiz }));
+});
+
+// Beleg zu einer Position hochladen - er zaehlt zugleich beim Lieferanten.
+router.post('/api/periods/:pid/positionen/:posid/dateien', async (req, res) => {
+  const position = get('SELECT * FROM positionen WHERE id = ?', Number(req.params.posid));
+  if (!position) throw new Error('Position nicht gefunden.');
+  const lieferant = position.lieferant_id ? lieferanten.holeLieferant(position.lieferant_id) : null;
+
+  const filename = decodeURIComponent(req.headers['x-filename'] || 'beleg.pdf');
+  const buffer = await leseBody(req);
+  if (!buffer.length) throw new Error('Die hochgeladene Datei ist leer.');
+
+  const datei = await speichereDatei({
+    periodId: Number(req.params.pid),
+    lieferantId: lieferant?.id ?? null,
+    filename,
+    mime: req.headers['content-type'] || 'application/octet-stream',
+    buffer,
+    source: 'manuell',
+    ordner: lieferant ? lieferant.name : position.name,
+  });
+  run('UPDATE artifacts SET position_id = ?, vendor = ? WHERE id = ?',
+    position.id, lieferant?.name || '', datei.id);
+  json(res, get('SELECT * FROM artifacts WHERE id = ?', datei.id), 201);
+});
+
+// Die flache Lieferantensicht - ohne Bereiche, fuer den reinen Bankabgleich.
 router.get('/api/periods/:id/monat', (req, res) => json(res, lieferanten.monatsuebersicht(req.params.id)));
 
 router.post('/api/periods/:pid/lieferanten/:lid/status', async (req, res) => {
