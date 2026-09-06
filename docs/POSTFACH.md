@@ -61,8 +61,8 @@ Danach im Reiter **Postfach** auf *Postfach durchsuchen*.
 
 | Meldung | Ursache |
 |---|---|
-| Anmeldung fehlgeschlagen | Das Kontopasswort statt des App-Passworts eingetragen, oder die Leerzeichen nicht entfernt. Auch möglich: für das Konto ist keine Zwei-Faktor-Bestätigung aktiv. |
-| Server hat nicht rechtzeitig geantwortet | IMAP ist in der Admin-Konsole abgeschaltet (Schritt 3), oder eine Firewall sperrt Port 993. Bei langsamer Verbindung `IMAP_TIMEOUT_MS` erhöhen. |
+| Anmeldung fehlgeschlagen | Google meldet dasselbe für mehrere Ursachen. Der Reihe nach: Ist die Adresse ein eigenes Nutzerkonto und kein Alias oder keine Gruppe? Ist der IMAP-Zugriff für das Konto freigegeben (auch bei richtigem Passwort lehnt Google sonst genau so ab)? Gehört das App-Passwort zu genau diesem Konto? Wurde versehentlich das Kontopasswort eingetragen? |
+| Server hat nicht rechtzeitig geantwortet | Eine Firewall sperrt Port 993. Bei langsamer Verbindung `IMAP_TIMEOUT_MS` erhöhen. |
 | Server nicht erreichbar | `IMAP_HOST` prüfen; für Google ist es `imap.gmail.com`. |
 | Suche findet nichts, obwohl Mails da sind | Der Zeitraum umfasst den Monat plus Nachlauf. Kamen die Rechnungen später, den Nachlauf im Reiter *Postfach* erhöhen. |
 

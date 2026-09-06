@@ -70,11 +70,22 @@ async function mitVerbindung(arbeit) {
 function uebersetzeFehler(err) {
   const text = String(err?.responseText || err?.message || err);
   if (/AUTHENTICATIONFAILED|Invalid credentials|LOGIN failed/i.test(text)) {
-    return `Anmeldung am Postfach ${config.imapUser} fehlgeschlagen. Häufigste Ursachen: ` +
-      'es wurde das Kontopasswort statt eines App-Passworts eingetragen, das App-Passwort ' +
-      'enthält noch Leerzeichen, oder für das Konto ist keine Zwei-Faktor-Bestätigung aktiv ' +
-      '(ohne die gibt es keine App-Passwörter). ' +
-      `(Meldung des Servers: ${text.slice(0, 160)})`;
+    // Google antwortet auf sehr verschiedene Ursachen mit derselben knappen
+    // Meldung - auch dann, wenn Konto und Passwort stimmen, der IMAP-Zugriff
+    // aber gar nicht freigeschaltet ist. Deshalb hier die Reihenfolge, in der
+    // es sich am schnellsten eingrenzen laesst.
+    return `Anmeldung am Postfach ${config.imapUser} fehlgeschlagen. ` +
+      'Google meldet dasselbe für mehrere Ursachen - der Reihe nach prüfen:\n' +
+      `1. Ist ${config.imapUser} ein eigenes Nutzerkonto? Ein Alias oder eine Google-Gruppe ` +
+      'hat kein eigenes Postfach und kann sich nicht anmelden. ' +
+      '(Admin-Konsole > Verzeichnis > Nutzer)\n' +
+      '2. Ist der IMAP-Zugriff für dieses Konto freigegeben? Ist er abgeschaltet, lehnt Google ' +
+      'die Anmeldung mit genau dieser Meldung ab, obwohl das Passwort stimmt. ' +
+      '(Admin-Konsole > Apps > Google Workspace > Gmail > Endnutzerzugriff)\n' +
+      '3. Gehört das App-Passwort zu genau diesem Konto? Wurde es in einem anderen Konto ' +
+      'erzeugt, passt es hier nicht.\n' +
+      '4. Wurde versehentlich das Kontopasswort statt des App-Passworts eingetragen?\n' +
+      `(Meldung des Servers: ${text.slice(0, 120)})`;
   }
   if (/ENOTFOUND|EAI_AGAIN/i.test(text)) {
     return `Der Server ${config.imapHost} ist nicht erreichbar. Bitte IMAP_HOST prüfen und die Internetverbindung.`;
