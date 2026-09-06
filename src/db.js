@@ -150,6 +150,63 @@ CREATE TABLE IF NOT EXISTS logbook_events (
 );
 CREATE INDEX IF NOT EXISTS idx_logbook_events ON logbook_events(logbook_id);
 
+-- Lieferant: die zentrale Einheit der Monatsarbeit. Zu jedem Lieferanten
+-- gehoeren Zugangsdaten, die Adresse seines Portals und die Muster, an denen
+-- seine Buchungen im Kontoauszug erkannt werden.
+CREATE TABLE IF NOT EXISTS lieferanten (
+  id             INTEGER PRIMARY KEY,
+  name           TEXT    NOT NULL UNIQUE,
+  url            TEXT    NOT NULL DEFAULT '',
+  rechnungen_url TEXT    NOT NULL DEFAULT '',   -- direkter Weg zur Rechnungsliste
+  username       TEXT    NOT NULL DEFAULT '',
+  secret_enc     TEXT,
+  has_mfa        INTEGER NOT NULL DEFAULT 0,
+  -- Optionale CSS-Selektoren, falls die automatische Formularerkennung
+  -- bei diesem Portal nicht greift.
+  sel_benutzer   TEXT    NOT NULL DEFAULT '',
+  sel_passwort   TEXT    NOT NULL DEFAULT '',
+  sel_absenden   TEXT    NOT NULL DEFAULT '',
+  erwartet       INTEGER NOT NULL DEFAULT 0,     -- uebliche Belegzahl je Monat, 0 = unbekannt
+  notizen        TEXT    NOT NULL DEFAULT '',
+  aktiv          INTEGER NOT NULL DEFAULT 1,
+  position       INTEGER NOT NULL DEFAULT 0,
+  created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Textmuster, an denen Buchungen diesem Lieferanten zugeordnet werden.
+CREATE TABLE IF NOT EXISTS lieferant_muster (
+  id           INTEGER PRIMARY KEY,
+  lieferant_id INTEGER NOT NULL REFERENCES lieferanten(id) ON DELETE CASCADE,
+  muster       TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_muster_lieferant ON lieferant_muster(lieferant_id);
+
+-- Stand eines Lieferanten in einem Monat. Abgehakt wird von Hand.
+CREATE TABLE IF NOT EXISTS lieferant_monat (
+  id           INTEGER PRIMARY KEY,
+  lieferant_id INTEGER NOT NULL REFERENCES lieferanten(id) ON DELETE CASCADE,
+  period_id    INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+  status       TEXT    NOT NULL DEFAULT 'offen',   -- offen | erledigt | entfaellt
+  erledigt_am  TEXT,
+  erledigt_von TEXT,
+  notiz        TEXT    NOT NULL DEFAULT '',
+  UNIQUE (lieferant_id, period_id)
+);
+
+-- Merkt, welcher Mailanhang schon uebernommen wurde. Ohne das entstuenden
+-- bei jedem Durchlauf des Postfachs Dubletten.
+CREATE TABLE IF NOT EXISTS postfach_import (
+  id            INTEGER PRIMARY KEY,
+  message_id    TEXT    NOT NULL,
+  attachment_id TEXT    NOT NULL,
+  artifact_id   INTEGER REFERENCES artifacts(id) ON DELETE SET NULL,
+  period_id     INTEGER REFERENCES periods(id) ON DELETE CASCADE,
+  absender      TEXT    NOT NULL DEFAULT '',
+  betreff       TEXT    NOT NULL DEFAULT '',
+  imported_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (message_id, attachment_id)
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -160,6 +217,8 @@ CREATE TABLE IF NOT EXISTS settings (
 // Datenbanken nicht mit, deshalb hier gezielt nachruesten.
 for (const [tabelle, spalte, definition] of [
   ['artifacts', 'web_url', "TEXT NOT NULL DEFAULT ''"],
+  ['artifacts', 'lieferant_id', 'INTEGER REFERENCES lieferanten(id) ON DELETE SET NULL'],
+  ['bank_tx', 'lieferant_id', 'INTEGER REFERENCES lieferanten(id) ON DELETE SET NULL'],
 ]) {
   const vorhanden = db.prepare(`PRAGMA table_info(${tabelle})`).all().some((s) => s.name === spalte);
   if (!vorhanden) db.exec(`ALTER TABLE ${tabelle} ADD COLUMN ${spalte} ${definition}`);

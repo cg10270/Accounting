@@ -42,6 +42,36 @@ export async function findReply(ticket) {
   };
 }
 
+/**
+ * Mock-Postfach: jede Datei unter data/inbox gilt als eine Nachricht mit
+ * einem Anhang. So laesst sich der gesamte Ablauf ohne Google pruefen.
+ */
+export async function sucheNachrichten() {
+  const inbox = path.join(config.dataDir, 'inbox');
+  fs.mkdirSync(inbox, { recursive: true });
+  return fs.readdirSync(inbox).filter((f) => !f.startsWith('.')).map((f) => {
+    const voll = path.join(inbox, f);
+    const stat = fs.statSync(voll);
+    return {
+      id: f,
+      subject: `Rechnung ${f}`,
+      from: 'lieferant@example.invalid',
+      datum: stat.mtime.toUTCString(),
+      empfangen: stat.mtime.toISOString(),
+      anhaenge: [{ filename: f, mime: mimeFuer(f), attachmentId: f, size: stat.size }],
+    };
+  });
+}
+
+export async function ladeAnhang(nachrichtId) {
+  return fs.readFileSync(path.join(config.dataDir, 'inbox', nachrichtId));
+}
+
+function mimeFuer(name) {
+  const e = String(name).toLowerCase().split('.').pop();
+  return { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' }[e] || 'application/octet-stream';
+}
+
 export function describe() {
   return { driver: 'mock', outbox: config.outboxDir, ready: true };
 }

@@ -16,8 +16,10 @@
 </header>
 
 <nav>
-  <button data-reiter="aufgaben" class="aktiv">Aufgaben</button>
-  <button data-reiter="bank">Bankabgleich</button>
+  <button data-reiter="monat" class="aktiv">Monat</button>
+  <button data-reiter="postfach">Postfach</button>
+  <button data-reiter="lieferanten">Lieferanten</button>
+  <button data-reiter="aufgaben">Weitere Aufgaben</button>
   <button data-reiter="belege">Belege erstellen</button>
   <button data-reiter="logbuch">Logbuch</button>
   <button data-reiter="einstellungen">Einstellungen</button>
@@ -26,7 +28,7 @@
 <main>
 
   <!-- ------------------------------- Aufgaben ------------------------------ -->
-  <section class="reiter aktiv" id="reiter-aufgaben">
+  <section class="reiter" id="reiter-aufgaben">
     <div class="aufgaben-layout">
       <div>
         <div class="karte">
@@ -64,24 +66,100 @@
     </div>
   </section>
 
-  <!-- ------------------------------ Bankabgleich --------------------------- -->
-  <section class="reiter" id="reiter-bank">
+  <!-- -------------------------------- Monat -------------------------------- -->
+  <section class="reiter aktiv" id="reiter-monat">
+
     <div class="karte">
-      <h2>Bankauszug hochladen</h2>
+      <h2>Kontoauszug</h2>
       <div class="inhalt">
         <div class="ablegen" id="bank-ablegen">
           CSV-Export des Kontoauszugs hierher ziehen oder klicken
           <input type="file" id="bank-datei" accept=".csv,.txt,text/csv" hidden>
         </div>
-        <p class="klein-text leise" style="margin-bottom:0">
+        <p class="klein-text leise" style="margin-bottom:0" id="bank-stand">
           Trennzeichen, Spalten und deutsche Zahlenformate werden automatisch erkannt.
         </p>
       </div>
     </div>
 
     <div class="karte">
-      <h2>Buchungsgruppen und Belegabgleich</h2>
-      <div id="bank-gruppen"><div class="leer">Noch kein Kontoauszug für diesen Zeitraum importiert.</div></div>
+      <h2 style="display:flex;align-items:center;gap:12px">
+        <span style="flex:1">Lieferanten diesen Monat</span>
+        <span class="klein-text leise" id="monat-summen"></span>
+      </h2>
+      <div id="monat-tabelle"><div class="leer">Noch kein Zeitraum gewählt.</div></div>
+    </div>
+
+    <div class="karte" id="karte-ohne-zuordnung" hidden>
+      <h2>Buchungen ohne Lieferant</h2>
+      <div class="inhalt klein-text leise" style="border-bottom:1px solid var(--rand)">
+        Lege daraus einen Lieferanten an oder ordne die Buchung einem bestehenden zu.
+        Der Buchungstext wird dabei als Erkennungsmuster übernommen.
+      </div>
+      <div id="ohne-zuordnung"></div>
+    </div>
+  </section>
+
+  <!-- ------------------------------- Postfach ------------------------------- -->
+  <section class="reiter" id="reiter-postfach">
+    <div class="karte">
+      <h2>Belege aus dem Postfach holen</h2>
+      <div class="inhalt">
+        <p class="klein-text leise" style="margin-top:0">
+          Durchsucht <strong id="pf-postfach">das Buchhaltungspostfach</strong> nach Mails mit Anhang
+          im gewählten Zeitraum. Signaturbilder und Zertifikate werden aussortiert, schon übernommene
+          Anhänge erkannt. Übernommen wird nur, was du auswählst.
+        </p>
+        <div class="reihe">
+          <label class="reihe klein-text" style="gap:6px">
+            Nachlauf in den Folgemonat
+            <input type="number" id="pf-nachlauf" value="10" min="0" max="60" style="width:70px">
+            Tage
+          </label>
+          <button class="knopf" id="pf-suchen">Postfach durchsuchen</button>
+          <span class="klein-text leise" id="pf-zeitraum"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="karte" id="pf-karte" hidden>
+      <h2 style="display:flex;align-items:center;gap:12px">
+        <span style="flex:1">Gefundene Belege</span>
+        <span class="klein-text leise" id="pf-stand"></span>
+      </h2>
+      <div id="pf-treffer"></div>
+      <div class="inhalt reihe" style="border-top:1px solid var(--rand)">
+        <button class="knopf leise klein" id="pf-alle">Alle neuen auswählen</button>
+        <button class="knopf" id="pf-uebernehmen">Ausgewählte übernehmen</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ----------------------------- Lieferanten ------------------------------ -->
+  <section class="reiter" id="reiter-lieferanten">
+    <div class="karte">
+      <h2>Neuer Lieferant</h2>
+      <div class="inhalt">
+        <div class="raster">
+          <label class="feld"><span>Name *</span><input type="text" id="lf-name" placeholder="Google"></label>
+          <label class="feld"><span>Portal-Adresse</span><input type="text" id="lf-url" placeholder="https://..."></label>
+          <label class="feld"><span>Direkt zu den Rechnungen</span><input type="text" id="lf-rechnungen" placeholder="https://.../invoices"></label>
+          <label class="feld"><span>Benutzername</span><input type="text" id="lf-user"></label>
+          <label class="feld"><span>Passwort</span><input type="password" id="lf-secret"></label>
+          <label class="feld"><span>Belege je Monat (0 = unbekannt)</span><input type="number" id="lf-erwartet" value="0" min="0"></label>
+        </div>
+        <label class="feld"><span>Erkennungsmuster im Kontoauszug (eines je Zeile, leer = Name)</span>
+          <textarea id="lf-muster" style="min-height:52px" placeholder="google&#10;paypal *google"></textarea></label>
+        <div class="reihe">
+          <label class="reihe klein-text" style="gap:6px"><input type="checkbox" id="lf-mfa" style="width:auto"> Verlangt Bestätigungscode</label>
+          <button class="knopf klein" id="lf-anlegen">Anlegen</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="karte">
+      <h2>Stammdaten</h2>
+      <div id="lieferantenliste"><div class="leer">Noch keine Lieferanten angelegt.</div></div>
     </div>
   </section>
 

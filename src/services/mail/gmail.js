@@ -32,6 +32,15 @@ export async function findReply(ticket) {
   };
 }
 
+/** Durchsucht das Buchhaltungspostfach. */
+export async function sucheNachrichten(query, max) {
+  return gmail.sucheNachrichten(query, max);
+}
+
+export async function ladeAnhang(nachrichtId, attachmentId) {
+  return gmail.ladeAnhang(nachrichtId, attachmentId);
+}
+
 export function describe() {
   const fehlend = [];
   if (!config.googleServiceAccountJson) fehlend.push('GOOGLE_SERVICE_ACCOUNT_JSON');

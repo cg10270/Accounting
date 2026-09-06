@@ -23,7 +23,8 @@ export const config = {
   host: process.env.HOST || '127.0.0.1',
 
   dataDir: path.join(ROOT, 'data'),
-  dbFile: path.join(ROOT, 'data', 'accounting.sqlite'),
+  // Ueberschreibbar, damit Tests gegen eine eigene Datenbank laufen koennen.
+  dbFile: process.env.DB_FILE || path.join(ROOT, 'data', 'accounting.sqlite'),
 
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
   model: 'claude-opus-5',

@@ -12,7 +12,9 @@ import { generiereAufgaben } from './services/llm.js';
 import { parseStatement } from './services/bank/csv.js';
 import { buildGroups, groupKeyFor, labelFor } from './services/bank/grouping.js';
 import * as logbuch from './services/logbook.js';
-import { laufeAufgabe } from './services/agent.js';
+import * as lieferanten from './services/lieferanten.js';
+import * as portal from './services/browser/portal.js';
+import * as postfach from './services/postfach.js';
 import { erstelleBewirtungsbeleg, erstelleSpesenabrechnung, kombiniere } from './services/docgen.js';
 import { analysiereQuittung } from './services/beleganalyse.js';
 
@@ -36,6 +38,9 @@ router.get('/api/status', (req, res) => json(res, {
 
 router.get('/api/periods', (req, res) => json(res, all(`
   SELECT p.*,
+         (SELECT COUNT(*) FROM lieferanten WHERE aktiv = 1) AS lieferanten,
+         (SELECT COUNT(*) FROM lieferant_monat lm
+           WHERE lm.period_id = p.id AND lm.status IN ('erledigt', 'entfaellt')) AS lieferanten_erledigt,
          (SELECT COUNT(*) FROM tasks t WHERE t.period_id = p.id) AS aufgaben,
          (SELECT COUNT(*) FROM tasks t WHERE t.period_id = p.id AND t.status = 'erledigt') AS erledigt
   FROM periods p ORDER BY p.year DESC, p.month DESC`)));
@@ -166,28 +171,88 @@ router.post('/api/periods/:id/ki/aufgaben', async (req, res) => {
   json(res, { angelegt, unveraendert: behalten.length, ki: aiEnabled, aufgaben: ladeAufgaben(periodId) });
 });
 
-// Ein Browser-Lauf dauert Minuten. Der Fortschritt wird deshalb als
-// Ereignisstrom gesendet, statt die Oberflaeche blind warten zu lassen.
-router.post('/api/tasks/:id/ki/lauf', async (req, res) => {
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream; charset=utf-8',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  });
-  const sende = (daten) => res.write(`data: ${JSON.stringify(daten)}\n\n`);
+// --- Lieferanten ------------------------------------------------------------
 
-  try {
-    const ergebnis = await laufeAufgabe(
-      Number(req.params.id),
-      (art, text) => sende({ art, text, zeit: new Date().toISOString() }),
-    );
-    sende({ art: 'ergebnis', ...ergebnis });
-  } catch (err) {
-    sende({ art: 'fehler', text: err.message });
-  }
-  res.end();
+router.get('/api/lieferanten', (req, res) => json(res, lieferanten.listeLieferanten()));
+router.post('/api/lieferanten', async (req, res) => json(res, lieferanten.legeAn(await leseJson(req)), 201));
+router.patch('/api/lieferanten/:id', async (req, res) => json(res, lieferanten.aendere(req.params.id, await leseJson(req))));
+router.delete('/api/lieferanten/:id', (req, res) => json(res, lieferanten.loesche(req.params.id)));
+
+// Die Hauptansicht: je Lieferant Bank gegen Belege.
+router.get('/api/periods/:id/monat', (req, res) => json(res, lieferanten.monatsuebersicht(req.params.id)));
+
+router.post('/api/periods/:pid/lieferanten/:lid/status', async (req, res) => {
+  const { status, notiz, von } = await leseJson(req);
+  json(res, lieferanten.setzeStatus(req.params.lid, req.params.pid, status, { von, notiz }));
 });
+
+// Buchungen neu zuordnen - nach Musteränderungen oder einem Nachimport.
+router.post('/api/periods/:id/zuordnen', (req, res) => json(res, lieferanten.ordneBuchungenZu(req.params.id)));
+
+// Aus einer nicht zugeordneten Buchung einen Lieferanten machen.
+router.post('/api/bank/buchungen/:id/lieferant', async (req, res) => {
+  const tx = get('SELECT * FROM bank_tx WHERE id = ?', Number(req.params.id));
+  if (!tx) throw new Error('Buchung nicht gefunden.');
+  const { lieferant_id, name } = await leseJson(req);
+
+  let ziel;
+  if (lieferant_id) {
+    ziel = lieferanten.holeLieferant(lieferant_id);
+    if (!ziel) throw new Error('Lieferant nicht gefunden.');
+    // Den Buchungstext als weiteres Erkennungsmuster aufnehmen.
+    ziel = lieferanten.aendere(ziel.id, {
+      muster: [...ziel.muster.map((m) => m.muster), tx.counterparty || tx.purpose],
+    });
+  } else {
+    ziel = lieferanten.legeAn({ name: (name || tx.counterparty || tx.purpose || 'Unbenannt').trim() });
+  }
+  lieferanten.ordneBuchungenZu(tx.period_id);
+  json(res, { lieferant: ziel, ...lieferanten.monatsuebersicht(tx.period_id) }, 201);
+});
+
+router.get('/api/periods/:pid/lieferanten/:lid/details', (req, res) =>
+  json(res, lieferanten.details(req.params.lid, req.params.pid)));
+
+// Beleg zu einem Lieferanten hochladen. Datei als reiner Koerper, Name im Header.
+router.post('/api/periods/:pid/lieferanten/:lid/dateien', async (req, res) => {
+  const lieferant = lieferanten.holeLieferant(req.params.lid);
+  if (!lieferant) throw new Error('Lieferant nicht gefunden.');
+  const filename = decodeURIComponent(req.headers['x-filename'] || 'beleg.pdf');
+  const buffer = await leseBody(req);
+  if (!buffer.length) throw new Error('Die hochgeladene Datei ist leer.');
+
+  const datei = await speichereDatei({
+    periodId: Number(req.params.pid),
+    lieferantId: lieferant.id,
+    filename,
+    mime: req.headers['content-type'] || 'application/octet-stream',
+    buffer,
+    source: 'manuell',
+    ordner: lieferant.name,
+  });
+  run('UPDATE artifacts SET vendor = ? WHERE id = ?', lieferant.name, datei.id);
+  json(res, datei, 201);
+});
+
+// --- Postfach ---------------------------------------------------------------
+
+router.post('/api/periods/:id/postfach/suche', async (req, res) => {
+  const { nachlaufTage } = await leseJson(req);
+  json(res, await postfach.durchsuche(req.params.id, { nachlaufTage }));
+});
+
+router.post('/api/periods/:id/postfach/uebernehmen', async (req, res) => {
+  const { auswahl } = await leseJson(req);
+  json(res, await postfach.uebernimm(req.params.id, auswahl || []));
+});
+
+// --- Portal öffnen ----------------------------------------------------------
+
+router.post('/api/periods/:pid/lieferanten/:lid/portal', async (req, res) =>
+  json(res, await portal.oeffnePortal(req.params.lid, req.params.pid)));
+router.get('/api/lieferanten/:id/portal', (req, res) => json(res, portal.zustand(req.params.id)));
+router.delete('/api/lieferanten/:id/portal', async (req, res) => json(res, await portal.schliessePortal(req.params.id)));
+router.get('/api/portale', (req, res) => json(res, portal.offeneSitzungen()));
 
 // --- Dateien ----------------------------------------------------------------
 
@@ -288,8 +353,11 @@ router.post('/api/periods/:id/bank/import', async (req, res) => {
       tx.amount_cents, tx.currency, key, labelFor(tx, key), tx.raw,
     );
   }
+  const zuordnung = lieferanten.ordneBuchungenZu(periodId);
+
   json(res, {
     statement_id: statementId,
+    zuordnung,
     buchungen: ergebnis.transaktionen.length,
     verworfen: ergebnis.verworfen.length,
     erkannte_spalten: ergebnis.mapping,

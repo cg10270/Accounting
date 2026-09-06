@@ -100,6 +100,40 @@ export async function findeAntwort(ticket) {
   return ohneAnhang;
 }
 
+/**
+ * Durchsucht das Postfach und liefert Nachrichten samt ihrer Anhaenge.
+ * @param {string} query  Gmail-Suchausdruck, z.B. 'has:attachment after:2026/08/01'
+ */
+export async function sucheNachrichten(query, maxNachrichten = 300) {
+  const gefunden = [];
+  let seite;
+
+  do {
+    const treffer = await googleAbruf(
+      url('/users/me/messages', { q: query, maxResults: '100', ...(seite ? { pageToken: seite } : {}) }),
+      { scopes: SCOPES.gmailRead },
+    );
+    for (const { id } of treffer.messages || []) {
+      if (gefunden.length >= maxNachrichten) break;
+      const nachricht = await googleAbruf(
+        url(`/users/me/messages/${id}`, { format: 'full' }), { scopes: SCOPES.gmailRead });
+      gefunden.push({
+        id: nachricht.id,
+        subject: kopfzeile(nachricht, 'Subject'),
+        from: kopfzeile(nachricht, 'From'),
+        datum: kopfzeile(nachricht, 'Date'),
+        // internalDate ist Millisekunden seit Epoche und zuverlaessiger als
+        // der Date-Kopf, den Absender frei setzen koennen.
+        empfangen: nachricht.internalDate ? new Date(Number(nachricht.internalDate)).toISOString() : '',
+        anhaenge: sammleAnhaenge(nachricht.payload),
+      });
+    }
+    seite = treffer.nextPageToken;
+  } while (seite && gefunden.length < maxNachrichten);
+
+  return gefunden;
+}
+
 export async function ladeAnhang(nachrichtId, attachmentId) {
   const ergebnis = await googleAbruf(
     url(`/users/me/messages/${nachrichtId}/attachments/${attachmentId}`),

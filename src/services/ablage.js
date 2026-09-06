@@ -8,7 +8,7 @@ import { storage, buildPath, sanitize } from './storage/index.js';
  * hochgeladen, von der KI beschafft, als Eigenbeleg erzeugt oder per Mail
  * eingegangen.
  */
-export async function speichereDatei({ periodId, taskId = null, filename, mime, buffer, source, ordner = null }) {
+export async function speichereDatei({ periodId, taskId = null, lieferantId = null, filename, mime, buffer, source, ordner = null }) {
   const period = get('SELECT * FROM periods WHERE id = ?', periodId);
   if (!period) throw new Error('Zeitraum nicht gefunden.');
   const task = taskId ? get('SELECT * FROM tasks WHERE id = ?', taskId) : null;
@@ -20,9 +20,10 @@ export async function speichereDatei({ periodId, taskId = null, filename, mime, 
   const checksum = crypto.createHash('sha256').update(buffer).digest('hex');
 
   const r = run(
-    `INSERT INTO artifacts (period_id, task_id, filename, mime, size, checksum, storage_path, storage_id, web_url, source)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    periodId, taskId, sanitize(filename), mime, buffer.length, checksum,
+    `INSERT INTO artifacts (period_id, task_id, lieferant_id, filename, mime, size, checksum,
+                            storage_path, storage_id, web_url, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    periodId, taskId, lieferantId, sanitize(filename), mime, buffer.length, checksum,
     abgelegt.storagePath, abgelegt.storageId, abgelegt.webUrl || '', source,
   );
   return get('SELECT * FROM artifacts WHERE id = ?', Number(r.lastInsertRowid));

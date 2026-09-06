@@ -1,35 +1,58 @@
 # Buchhaltungsvorbereitung
 
-Webanwendung zur Vorbereitung der monatlichen Buchhaltung: Aufgabenliste mit KI-Unterstützung,
-Belegablage, Bankabgleich, Erstellung von Eigenbelegen und ein nachvollziehbares Logbuch.
+Webanwendung, die die monatlich wiederkehrende Belegvorbereitung strukturiert.
+Zentrale Einheit ist der **Lieferant**: je Lieferant steht nebeneinander, was die
+Bank sagt und was an Belegen vorliegt.
 
-**Stand:** Vollständig in den Grundzügen — Oberfläche, Datenmodell, Fachlogik,
-Anbindung an Google Drive und Gmail sowie die KI-gesteuerte Belegbeschaffung im
-Browser. Was noch offen ist, steht unter [Was noch fehlt](#was-noch-fehlt).
+**Grundsatz von v1: Das System organisiert, der Mensch beschafft.** Ein Klick
+meldet dich im Portal an und öffnet die Rechnungsseite; was du dort
+herunterlädst, wird automatisch übernommen. Die autonome Beschaffung durch die
+KI ist gebaut, aber für v2 geparkt (siehe [v2/](v2/README.md)).
 
 ## Schnellstart
 
 ```bash
 npm install
-cp .env.example .env      # ANTHROPIC_API_KEY und VAULT_PASSPHRASE eintragen
-npm run seed              # Standard-Aufgabenvorlagen anlegen
+cp .env.example .env      # VAULT_PASSPHRASE eintragen
+npm run seed              # Aufgabenvorlagen anlegen
 npm start                 # http://127.0.0.1:4000
+npm test                  # 48 Tests
 ```
 
-Ohne `ANTHROPIC_API_KEY` läuft alles weiter, die KI-Funktionen liefern dann feste
-Beispielantworten. Ohne `VAULT_PASSPHRASE` werden keine Passwörter angenommen.
+## Der Monatsablauf
 
-## Funktionsumfang
+1. **Kontoauszug importieren** (CSV). Die Buchungen werden anhand hinterlegter
+   Muster automatisch den Lieferanten zugeordnet.
+2. **Postfach durchsuchen.** Holt Belege aus `accounting@lexaid.net` für den
+   Monat samt Nachlauf in den Folgemonat. Signaturbilder und Zertifikate werden
+   aussortiert, bereits übernommene Anhänge erkannt.
+3. **Portal öffnen** je Lieferant. Anmeldung läuft automatisch, du lädst die
+   Belege herunter, sie landen sofort beim richtigen Lieferanten.
+4. **Fehlendes anfordern.** Kürzel an einer Buchung schickt eine Mail mit
+   Ticket; die Antwort wird automatisch abgelegt.
+5. **Abhaken.** Von Hand, mit Blick auf die Differenz zwischen Bank und Belegen.
+
+## Die Monatsansicht
+
+| Lieferant | Bank | Belege | Differenz | Erledigt | |
+|---|---|---|---|---|---|
+| Google | 3 · −1.274,48 € | 1 · 1.274,48 € | ✓ 0,00 € | ☐ | Portal öffnen |
+| Muster AG | 1 · 3.570,00 € | — | Δ 3.570,00 € | ☐ | |
+
+Aufklappen zeigt die Einzelbuchungen neben den Belegen, mit Ablagefeld und
+Monatsnotiz. Buchungen ohne Lieferant stehen darunter und lassen sich per Klick
+zu einem neuen Lieferanten machen — der Buchungstext wird dabei als
+Erkennungsmuster übernommen.
+
+## Weitere Funktionen
 
 | Bereich | Was es tut |
 |---|---|
-| **Aufgaben** | Liste je Zeitraum, in beliebiger Reihenfolge anspringbar. Erstellen und Ändern per KI-Prompt oder von Hand. Je Aufgabe: Status, hochgeladene Daten, eigener KI-Prompt, Zugangsdaten. |
-| **Ablage** | Jede Datei landet unter `Buchhaltung/<Jahr>/<MM Monat>/<Aufgabe>/`. Die Übersicht in der Oberfläche ist virtuell — die Wahrheit liegt im Ablage-Backend. |
-| **Belegbeschaffung** | Zu jeder Aufgabe kann die KI einen echten Chrome steuern: im Portal anmelden, Belege herunterladen, ablegen. Fortschritt läuft live mit. Siehe [docs/BROWSER.md](docs/BROWSER.md). |
-| **Bankabgleich** | CSV-Import mit automatischer Erkennung von Trennzeichen, Spalten und deutschen Zahlenformaten. Buchungen werden zu Gruppen zusammengefasst und den vorhandenen Belegen gegenübergestellt: Anzahl, Summe, Belegsumme, Differenz. |
-| **Beleganfragen** | Ein Kürzel an einer Buchung (z. B. `az`) verschickt eine Mail an `az@lexaid.net` mit der Bitte, den Beleg an `accounting@lexaid.net` zu senden. Jede Anfrage bekommt ein Ticket, das im Betreff mitläuft. |
-| **Logbuch** | Append-only. Jede Anfrage und jeder KI-Lauf wird mit vollständigem Verlauf festgehalten. Die Erledigung wird im Postfach anhand des Tickets geprüft; ein eingegangener Beleg landet automatisch in der Ablage und wird im Bankabgleich gegengerechnet. |
-| **Belegerstellung** | Bewirtungsbelege nach § 4 Abs. 5 Satz 1 Nr. 2 EStG und Spesenabrechnungen nach § 9 Abs. 4a EStG als PDF, zusammengeführt mit der Originalquittung. Die Quittung kann per KI ausgelesen werden. |
+| **Belegerstellung** | Bewirtungsbelege nach § 4 Abs. 5 Satz 1 Nr. 2 EStG und Spesenabrechnungen nach § 9 Abs. 4a EStG als PDF, zusammengeführt mit der Originalquittung. |
+| **Beleganfragen** | Kürzel an einer Buchung (z. B. `az`) schickt eine Mail an `az@lexaid.net`. Jede Anfrage bekommt ein Ticket; die Antwort wird erkannt und der Beleg abgelegt. |
+| **Logbuch** | Append-only, mit vollständigem Verlauf je Vorgang. |
+| **Weitere Aufgaben** | Für Arbeiten ohne Lieferantenbezug: Lohn, Umsatzsteuervoranmeldung, Übergabe an die Kanzlei. |
+| **Ablage** | `Buchhaltung/<Jahr>/<MM Monat>/<Lieferant>/` — lokal oder in Google Drive. |
 
 ## Architektur
 
@@ -39,73 +62,59 @@ public/          Oberfläche (HTML, CSS, ein Modul JavaScript — kein Framework
 src/server.js    HTTP-Server, alle Endpunkte
 src/db.js        SQLite-Schema (node:sqlite, keine native Abhängigkeit)
 src/services/
-   llm.js            Claude (Opus 5) für Aufgabenlisten und Automatisierung
-   beleganalyse.js   Quittungen auslesen (PDF und Bild direkt an das Modell)
-   docgen.js         Bewirtungsbeleg und Spesenabrechnung als PDF, Zusammenführung
+   lieferanten.js    Stammdaten, Zuordnung der Buchungen, Monatsrollup
+   postfach.js       Belege aus dem Mailpostfach holen
+   browser/portal.js Portal öffnen, anmelden, Downloads übernehmen
+   ablage.js         Einziger Weg, auf dem Dateien ins System gelangen
+   docgen.js         Bewirtungsbeleg und Spesenabrechnung als PDF
    steuerregeln.js   Steuerliche Kennzahlen an einer Stelle
    vault.js          Zugangsdaten, AES-256-GCM
-   agent.js          Agentenschleife für die Automatisierung einer Aufgabe
-   browser/          Chrome-Steuerung und Werkzeugsatz des Agenten
    logbook.js        Logbuch, Beleganfragen, Erledigungsprüfung
-   bank/csv.js       CSV-Parser für Kontoauszüge
-   bank/grouping.js  Gruppenbildung und Belegabgleich
-   ablage.js         Einziger Weg, auf dem Dateien ins System gelangen
-   storage/          Ablage-Adapter: local (Dateisystem) | gdrive (Service Account)
-   mail/             Mail-Adapter:   mock (data/outbox) | gmail (Service Account)
+   bank/             CSV-Parser und Namensnormalisierung
+   storage/          Ablage-Adapter: local | gdrive (Service Account)
+   mail/             Mail-Adapter:   mock  | gmail (Service Account)
    google/           Anmeldung als Service Account, Drive- und Gmail-Aufrufe
+test/            48 Tests auf der Logik, die Geld trägt
+v2/              Geparkt: autonome Belegbeschaffung durch die KI
 ```
-
-Die Adapter in `storage/` und `mail/` haben dieselbe Schnittstelle. Der Wechsel auf
-Google erfolgt über `STORAGE_DRIVER=gdrive` und `MAIL_DRIVER=gmail` in der `.env`,
-ohne Änderung an der übrigen Anwendung. Die Einrichtung beschreibt
-[docs/GOOGLE.md](docs/GOOGLE.md); `npm run google:check` prüft sie Schritt für Schritt.
 
 ## Umgang mit Zugangsdaten
 
-Portal-Logins sind das größte Risiko des Systems. Deshalb gilt:
-
-- Passwörter werden mit AES-256-GCM verschlüsselt abgelegt. Der Schlüssel wird aus
+- Passwörter liegen AES-256-GCM-verschlüsselt; der Schlüssel wird aus
   `VAULT_PASSPHRASE` abgeleitet und existiert nur im Prozessspeicher.
-- Die API gibt niemals Klartext zurück, nur `••••••••`.
-- **Kein Passwort gelangt in den Modellkontext.** Die KI erhält ausschließlich eine
-  Referenz („Zugang 1: Portal X, Benutzer y, Passwort im Tresor hinterlegt“). Aufgelöst
-  wird sie erst unmittelbar im Anmeldeformular.
-- Zugänge mit Zwei-Faktor-Authentifizierung werden als solche markiert. Ein KI-Lauf
-  bricht dort mit dem Hinweis auf manuellen Eingriff ab, statt still zu scheitern.
-- Der vom Agenten gesteuerte Chrome läuft ohne eigenen Passwortmanager, ohne
-  Autofill und ohne Sync — sonst würde er die Portal-Zugangsdaten mitschneiden.
-- Der Agent erreicht nur die Domains der hinterlegten Zugänge. Alles andere wird
-  abgewiesen, bevor der Browser navigiert.
+- Die API gibt niemals Klartext zurück, nur `••••••••`. Ein leeres Passwortfeld
+  beim Ändern bedeutet „unverändert", nicht „löschen".
+- Das Passwort wird erst beim Anmelden entschlüsselt und unmittelbar in das
+  Formularfeld geschrieben.
+- Der geöffnete Chrome läuft ohne eigenen Passwortmanager, ohne Autofill und
+  ohne Sync — sonst schnitte er genau die Zugangsdaten mit, die der Tresor
+  schützen soll.
+- Zwei-Faktor ist kein Hindernis: das Fenster steht offen, du gibst den Code
+  selbst ein.
 
 ## Steuerliche Kennzahlen
 
 Alle Sätze und Grenzen stehen in `src/services/steuerregeln.js` (Stand
-Veranlagungszeitraum 2026): 70/30-Aufteilung bei Bewirtung, Kleinbetragsgrenze 250 €,
-Verpflegungspauschalen 28 € / 14 € samt Kürzungen für gestellte Mahlzeiten.
+Veranlagungszeitraum 2026): 70/30-Aufteilung bei Bewirtung, Kleinbetragsgrenze
+250 €, Verpflegungspauschalen 28 € / 14 € samt Kürzungen.
 **Vor dem produktiven Einsatz mit der Steuerkanzlei abstimmen.**
 
-## Was noch fehlt
+## Einrichtung
 
-1. **Spalten-Zuordnung von Hand** — der CSV-Parser erkennt gängige Exporte selbst,
-   eine Korrekturmöglichkeit in der Oberfläche fehlt noch.
-2. **Gruppen zusammenführen** — die Gruppierung arbeitet heuristisch. Ein manuelles
-   Verschmelzen und Umbenennen mit dauerhaften Regeln steht aus.
-3. **Zeitplan** — Läufe werden heute von Hand gestartet. Ein wiederkehrender
-   Monatslauf wäre der nächste sinnvolle Ausbau.
+- **Google Drive und Gmail** — [docs/GOOGLE.md](docs/GOOGLE.md),
+  Einrichtung prüfen mit `npm run google:check`
+- **Portal-Anmeldung** — [docs/PORTALE.md](docs/PORTALE.md)
+- **API** — [docs/API.md](docs/API.md)
 
-Zwei Dinge sind gegen Nachbauten geprüft, nicht gegen die echten Gegenstellen:
-die Google-Anbindung gegen einen Testserver, der die APIs nachbildet und die
-JWT-Signatur echt verifiziert, und die Browser-Steuerung gegen ein nachgebautes
-Lieferantenportal mit einer skriptgesteuerten Modell-Attrappe. Der erste Lauf
-mit echten Zugangsdaten sollte deshalb mit `npm run google:check` beginnen und
-für die Belegbeschaffung mit einem unkritischen Portal starten.
+## Was noch offen ist
 
-## Entwicklung
+1. **Spalten-Zuordnung von Hand** — der CSV-Parser erkennt gängige Exporte
+   selbst; eine Korrekturmöglichkeit in der Oberfläche fehlt.
+2. **Beträge aus Belegen auslesen** — heute tippst du den Betrag ein. Die
+   KI-Auslesung ist gebaut (`beleganalyse.js`) und für die Belegerstellung im
+   Einsatz, aber in der Monatsansicht noch nicht angeschlossen.
+3. **Wiederkehrender Monatslauf** — Zeiträume werden von Hand angelegt.
 
-```bash
-npm run dev           # Server mit automatischem Neustart
-npm run seed          # Vorlagen und Beispiel-Kürzel (mehrfach ausführbar)
-npm run google:check  # Google-Einrichtung prüfen
-```
-
-Die Daten liegen unter `data/` (SQLite, Ablage, Postausgang) und sind nicht versioniert.
+Die Google-Anbindung ist gegen einen Nachbau geprüft, nicht gegen ein reales
+Workspace-Konto. Der erste Lauf mit echten Zugangsdaten sollte deshalb mit
+`npm run google:check` beginnen.

@@ -167,3 +167,7 @@ details.gruppe > summary:hover { background: var(--flaeche-2); }
 .lauf-schritte .artfehler .symbol, .lauf-schritte .artabgebrochen .symbol { color: var(--rot); }
 .lauf-schritte .artbelegabgelegt .symbol { color: var(--gruen); }
 .lauf-schritte li.ergebnis { display: block; margin-top: 8px; padding: 10px; border-radius: 7px; background: var(--flaeche-2); border: 0; }
+
+/* Erledigte oder bereits übernommene Zeilen treten zurück */
+tr.ist-erledigt > td { opacity: .55; }
+tr.lf-zeile > td { vertical-align: middle; }
