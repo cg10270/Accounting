@@ -1,6 +1,10 @@
 node_modules/
 data/
+# Alle Varianten der Konfigurationsdatei - auch Sicherungskopien wie
+# .env.sicherung enthalten Passphrase und Passwoerter.
 .env
+.env.*
+!.env.example
 *.log
 .DS_Store
 secrets/
