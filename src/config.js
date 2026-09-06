@@ -57,6 +57,18 @@ export const config = {
   agentZusatzDomains: (process.env.AGENT_ERLAUBTE_DOMAINS || '').split(',').map((d) => d.trim()).filter(Boolean),
 
   mailDriver: process.env.MAIL_DRIVER || 'mock',
+
+  // ---- IMAP und SMTP (fuer MAIL_DRIVER=imap) ----
+  // Die Vorgaben passen fuer Google Workspace; als Passwort dient ein
+  // App-Passwort, nicht das Kontopasswort.
+  imapHost: process.env.IMAP_HOST || 'imap.gmail.com',
+  imapPort: Number(process.env.IMAP_PORT || 993),
+  imapUser: process.env.IMAP_USER || '',
+  imapPasswort: process.env.IMAP_PASSWORT || process.env.IMAP_PASSWORD || '',
+  imapPostfach: process.env.IMAP_POSTFACH || 'INBOX',
+  imapTimeoutMs: Number(process.env.IMAP_TIMEOUT_MS || 15000),
+  smtpHost: process.env.SMTP_HOST || 'smtp.gmail.com',
+  smtpPort: Number(process.env.SMTP_PORT || 465),
   outboxDir: path.join(ROOT, 'data', 'outbox'),
   mailFrom: process.env.MAIL_FROM || 'accounting@lexaid.net',
   accountingInbox: process.env.ACCOUNTING_INBOX || 'accounting@lexaid.net',

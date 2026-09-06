@@ -33,7 +33,7 @@ export async function findReply(ticket) {
 }
 
 /** Durchsucht das Buchhaltungspostfach. */
-export async function sucheNachrichten(query, max) {
+export async function sucheNachrichten({ query }, max) {
   return gmail.sucheNachrichten(query, max);
 }
 

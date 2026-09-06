@@ -59,7 +59,9 @@ export async function durchsuche(periodId, { nachlaufTage = 10 } = {}) {
   }
 
   const { query, von, bis } = bereich(period, nachlaufTage);
-  const nachrichten = await mailer.sucheNachrichten(query);
+  // Jeder Zugang nimmt sich, was er versteht: Gmail den Suchausdruck,
+  // IMAP die Datumsgrenzen.
+  const nachrichten = await mailer.sucheNachrichten({ von, bis, query });
 
   const lieferanten = listeLieferanten({ nurAktive: true });
   const bereitsUebernommen = new Set(

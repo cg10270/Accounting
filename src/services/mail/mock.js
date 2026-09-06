@@ -81,6 +81,7 @@ export function describe() {
     // sonst sieht "nichts gefunden" aus wie "keine Rechnungen da".
     echtesPostfach: false,
     hinweis: `Kein echtes Postfach angebunden. Gesucht wird im Ordner ${config.dataDir}/inbox. ` +
-      'Für den Abruf aus Gmail: MAIL_DRIVER=gmail in der .env setzen und den Google-Zugang einrichten (docs/GOOGLE.md).',
+      'Für den echten Abruf: MAIL_DRIVER=imap mit einem App-Passwort (siehe docs/POSTFACH.md) ' +
+      'oder MAIL_DRIVER=gmail mit einem Service Account (docs/GOOGLE.md).',
   };
 }

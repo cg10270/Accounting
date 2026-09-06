@@ -14,10 +14,14 @@
     "seed": "node src/seed.js",
     "google:check": "node src/google-check.js",
     "test": "node --test \"test/**/*.test.js\"",
-    "seed:checkliste": "node src/seed-checkliste.js"
+    "seed:checkliste": "node src/seed-checkliste.js",
+    "mail:check": "node src/mail-check.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",
+    "imapflow": "^1.7.8",
+    "mailparser": "^3.9.22",
+    "nodemailer": "^10.0.0",
     "pdf-lib": "^1.17.1",
     "playwright": "^1.62.1"
   }

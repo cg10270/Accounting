@@ -28,7 +28,8 @@ gespeicherten Zugänge unlesbar. Ein zweiter Aufruf überschreibt nichts.
 Weitere Befehle:
 
 ```bash
-npm test                  # 73 Tests
+npm test                  # 83 Tests
+npm run mail:check        # Postfach-Zugang prüfen
 npm run google:check      # Google-Einrichtung prüfen
 npm run seed:checkliste   # Checkliste nachziehen, wenn sie erweitert wurde
 ```
@@ -147,8 +148,10 @@ Veranlagungszeitraum 2026): 70/30-Aufteilung bei Bewirtung, Kleinbetragsgrenze
 
 ## Einrichtung
 
-- **Google Drive und Gmail** — [docs/GOOGLE.md](docs/GOOGLE.md),
-  Einrichtung prüfen mit `npm run google:check`
+- **Postfach** — [docs/POSTFACH.md](docs/POSTFACH.md) für den einfachen Weg
+  mit App-Passwort, prüfen mit `npm run mail:check`
+- **Google Drive und Gmail per Service Account** — [docs/GOOGLE.md](docs/GOOGLE.md),
+  prüfen mit `npm run google:check`
 - **Portal-Anmeldung** — [docs/PORTALE.md](docs/PORTALE.md)
 - **API** — [docs/API.md](docs/API.md)
 
