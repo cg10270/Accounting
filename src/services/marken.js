@@ -10,13 +10,20 @@ import { normalizeName } from './bank/grouping.js';
 // Abrechner und Marke auseinanderfallen. Alles andere loest die Normalisierung
 // des Namens von selbst.
 export const MARKEN = {
-  Meta: ['facebook', 'facebk', 'instagram', 'whatsapp', 'meta platforms', 'fb ads'],
+  Meta: ['facebook', 'facebk', 'fb', 'instagram', 'whatsapp', 'meta platforms', 'meta', 'fb ads'],
   Google: ['google', 'youtube', 'alphabet', 'gsuite', 'doubleclick', 'firebase'],
-  Microsoft: ['microsoft', 'msft', 'azure', 'office 365', 'microsoft 365', 'linkedin', 'github', 'skype'],
+  // Rechnet einzeln ab und erscheint einzeln im Auszug - deshalb eigene
+  // Marken, obwohl derselbe Konzern dahinter steht. Wuerden sie zusammenfallen,
+  // konkurrierten LinkedIn-Anzeigen und Microsoft-Werbung um dieselben Belege.
+  Microsoft: ['microsoft', 'msft', 'azure', 'office 365', 'microsoft 365', 'skype'],
+  'Microsoft Advertising': ['microsoft advertising', 'microsoft ads', 'msft ads', 'bing ads', 'bing'],
+  LinkedIn: ['linkedin'],
+  GitHub: ['github'],
   Amazon: ['amazon', 'amzn', 'aws', 'audible', 'twitch'],
   Apple: ['apple', 'itunes', 'icloud'],
   Adobe: ['adobe', 'behance'],
-  Salesforce: ['salesforce', 'slack'],
+  Salesforce: ['salesforce'],
+  Slack: ['slack'],
   Atlassian: ['atlassian', 'jira', 'confluence', 'trello', 'bitbucket'],
   OpenAI: ['openai', 'chatgpt'],
   Anthropic: ['anthropic', 'claude ai'],
@@ -95,4 +102,14 @@ export function vergleichsname(text) {
   if (marke) return marke.toLowerCase();
   const n = normalizeName(text);
   return n.split(' ').slice(0, 2).join(' ').trim();
+}
+
+// Kleingeschrieben wird verglichen, angezeigt wird der richtige Name.
+const SCHREIBWEISE = new Map(Object.keys(MARKEN).map((m) => [m.toLowerCase(), m]));
+
+export function anzeigename(vergleichsname) {
+  const schluessel = String(vergleichsname || '').trim();
+  if (!schluessel) return '';
+  return SCHREIBWEISE.get(schluessel)
+    ?? schluessel.replace(/(^|\s)\p{L}/gu, (c) => c.toUpperCase());
 }

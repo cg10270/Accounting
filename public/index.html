@@ -144,6 +144,20 @@
 
     <div class="karte">
       <h2 style="display:flex;align-items:center;gap:12px">
+        <span style="flex:1">Kein Beleg nötig</span>
+        <button class="knopf leise klein" id="ab-ausgenommen-zeigen">anzeigen</button>
+        <span class="klein-text leise" id="ab-ausgenommen-zahl"></span>
+      </h2>
+      <div class="inhalt klein-text leise" style="border-bottom:1px solid var(--rand)">
+        Löhne, Lohnsteuer, Krankenkassen und Berufsgenossenschaft belegt die
+        Lohnbuchhaltung über die DATEV-Datei; Entgelte der eigenen Bank stehen im
+        Kontoauszug. Die Muster dafür stehen unter Einstellungen.
+      </div>
+      <div id="ab-ausgenommen" hidden></div>
+    </div>
+
+    <div class="karte">
+      <h2 style="display:flex;align-items:center;gap:12px">
         <span style="flex:1">Erledigt</span>
         <button class="knopf leise klein" id="ab-erledigt-zeigen">anzeigen</button>
       </h2>
@@ -324,6 +338,24 @@
         </div>
         <table><thead><tr><th>Kürzel</th><th>E-Mail</th><th>Name</th><th></th></tr></thead>
           <tbody id="kuerzel-liste"></tbody></table>
+      </div>
+    </div>
+    <div class="karte">
+      <h2>Buchungen ohne Beleg</h2>
+      <div class="inhalt">
+        <p class="klein-text leise" style="margin-top:0">
+          Buchungen, deren Text eines dieser Muster enthält, erscheinen nicht in der
+          Liste der fehlenden Belege. Gedacht für alles, was anderswo belegt wird:
+          Lohn und Sozialabgaben über die Lohnbuchhaltung, Entgelte der eigenen Bank
+          über den Kontoauszug.
+        </p>
+        <div class="reihe" style="margin-bottom:14px">
+          <input type="text" id="ausnahme-muster" placeholder="krankenkasse" style="width:200px">
+          <input type="text" id="ausnahme-grund" placeholder="Grund (optional)" style="width:320px">
+          <button class="knopf klein" id="ausnahme-speichern">Hinzufügen</button>
+        </div>
+        <table><thead><tr><th>Muster</th><th>Grund</th><th></th></tr></thead>
+          <tbody id="ausnahme-liste"></tbody></table>
       </div>
     </div>
     <div class="karte">

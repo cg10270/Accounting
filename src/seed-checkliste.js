@@ -9,6 +9,7 @@
 import { get } from './db.js';
 import { legeAn as legeLieferantAn, listeLieferanten } from './services/lieferanten.js';
 import { legeBereichAn, legePositionAn, listeBereiche } from './services/checkliste.js';
+import { seed as seedAusnahmen } from './services/ausnahmen.js';
 
 const sagen = process.env.STILL ? () => {} : console.log;
 
@@ -22,6 +23,7 @@ const LIEFERANTEN = [
   { name: 'Google Ads',       url: 'https://ads.google.com',                        muster: ['google ads', 'google adwords', 'google >1000'] },
   { name: 'Meta Ads',         url: 'https://business.facebook.com',                 muster: ['meta platforms', 'facebook'] },
   { name: 'LinkedIn Ads',     url: 'https://www.linkedin.com/campaignmanager',      muster: ['linkedin'] },
+  { name: 'Microsoft Ads',    url: 'https://ads.microsoft.com',                     muster: ['microsoft advertising', 'microsoft ads', 'bing ads'] },
   { name: 'OpenAI',           url: 'https://platform.openai.com',                   muster: ['openai'] },
   { name: 'Anthropic',        url: 'https://console.anthropic.com',                 muster: ['anthropic', 'claude'] },
   { name: 'Google Workspace', url: 'https://admin.google.com',                      muster: ['google workspace', 'google cloud', 'gsuite', 'google <1000'] },
@@ -57,6 +59,7 @@ const CHECKLISTE = [
     { name: 'Google Ads',   lieferant: 'Google Ads' },
     { name: 'Meta Ads',     lieferant: 'Meta Ads' },
     { name: 'LinkedIn Ads', lieferant: 'LinkedIn Ads' },
+    { name: 'Microsoft Ads', lieferant: 'Microsoft Ads' },
   ]},
   { nummer: 6, name: 'Software & SaaS', positionen: [
     { name: 'OpenAI',            lieferant: 'OpenAI' },
@@ -113,7 +116,13 @@ for (const bereich of CHECKLISTE) {
   }
 }
 
+// Buchungen, zu denen es nie eine Eingangsrechnung gibt - Lohn, Sozialabgaben,
+// die eigene Bank. Ohne sie steht dieser Teil des Kontoauszugs dauerhaft in
+// der Liste des Fehlenden.
+const ausnahmen = seedAusnahmen();
+
 sagen(`Checkliste: ${neueBereiche} Bereich(e), ${neuePositionen} Position(en), ${neueLieferanten} Lieferant(en) angelegt.`);
+sagen(`Ausnahmen (kein Beleg nötig): ${ausnahmen.length} Muster hinterlegt.`);
 if (neueLieferanten) {
   sagen('\nHinweise:');
   sagen('  - Die Portaladressen sind Startseiten. Nach der ersten Anmeldung');

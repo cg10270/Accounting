@@ -90,7 +90,7 @@ async function ladePerioden() {
 }
 
 async function ladeAlles() {
-  await Promise.all([ladeAbgleich(), ladeMonat(), ladeLieferanten(), ladeAufgaben(), ladeLogbuch(), ladeKuerzel()]);
+  await Promise.all([ladeAbgleich(), ladeMonat(), ladeLieferanten(), ladeAufgaben(), ladeLogbuch(), ladeKuerzel(), ladeAusnahmen()]);
 }
 
 // --- Aufgaben ---------------------------------------------------------------
@@ -551,7 +551,8 @@ function zeichneAbgleich() {
   const z = d.zahlen;
   $('#ab-stand').textContent =
     `${z.buchungen} Buchungen: ${z.ausgaben} Ausgaben · ${z.offen} davon ohne Beleg (${euro(z.offen_cents)}) · `
-    + `${z.erledigt} erledigt · ${z.eingaenge} Eingänge (${euro(z.eingaenge_cents)}, kein Beleg nötig)`;
+    + `${z.erledigt} erledigt · ${z.ausgenommen} ohne Belegpflicht · `
+    + `${z.eingaenge} Eingänge (${euro(z.eingaenge_cents)})`;
   $('#ab-offen-zahl').textContent = z.offen ? `${z.offen} · ${euro(z.offen_cents)}` : 'nichts offen';
 
   const zeileOffen = (tx) => `
@@ -584,7 +585,7 @@ function zeichneAbgleich() {
     return `
       <tr style="background:var(--flaeche-2)">
         <td colspan="4" class="klein-text">
-          <strong>${esc(g.marke)}</strong>
+          <strong>${esc(g.name || g.marke)}</strong>
           <span class="leise"> · ${g.buchungen.length} Buchung(en) · </span>
           <span style="color:var(${g.belege.length && stimmt ? '--gruen' : '--text-leise'})">${esc(bilanz)}</span>
         </td>
@@ -621,6 +622,24 @@ function zeichneAbgleich() {
           ${b.analyse_fehler ? `<br><span class="leise">nicht ausgelesen: ${esc(b.analyse_fehler)}</span>` : ''}
         </td></tr>`).join('')}</tbody></table>`;
 
+  const ausgenommen = d.ausgenommen || [];
+  $('#ab-ausgenommen-zahl').textContent = ausgenommen.length
+    ? `${ausgenommen.length} · ${euro(z.ausgenommen_cents)}` : 'keine';
+  $('#ab-ausgenommen').innerHTML = !ausgenommen.length
+    ? '<div class="leer">Keine Buchung fällt unter eine Ausnahme.</div>'
+    : `<table>
+      <thead><tr><th style="width:90px">Datum</th><th>Buchung</th>
+        <th style="width:110px" class="rechts">Betrag</th><th>Grund</th></tr></thead>
+      <tbody>${ausgenommen.map((tx) => `
+        <tr>
+          <td class="klein-text">${datumDe(tx.booking_date)}</td>
+          <td class="klein-text">${esc(tx.counterparty || '')}
+            ${tx.purpose ? `<br><span class="leise">${esc(tx.purpose)}</span>` : ''}</td>
+          <td class="rechts">${euro(tx.amount_cents)}</td>
+          <td class="klein-text leise">${esc(tx.ausnahme?.grund || tx.ausnahme?.muster || '')}</td>
+        </tr>`).join('')}</tbody>
+    </table>`;
+
   $('#ab-erledigt').innerHTML = !d.erledigt.length
     ? '<div class="leer">Noch nichts zugeordnet.</div>'
     : `<table>
@@ -629,7 +648,7 @@ function zeichneAbgleich() {
       <tbody>${d.erledigt.map((tx) => tx.belege.map((b) => `
         <tr class="${b.status === 'bestaetigt' ? 'ist-erledigt' : ''}">
           <td class="klein-text">${datumDe(tx.booking_date)}</td>
-          <td class="klein-text"><strong>${esc(tx.anzeige || tx.counterparty)}</strong><br>
+          <td class="klein-text"><strong>${esc(tx.anzeige_name || tx.anzeige || tx.counterparty)}</strong><br>
             <span class="leise">${esc(b.begruendung)}</span></td>
           <td class="klein-text">${belegZeile(b)}</td>
           <td class="rechts">${euro(tx.amount_cents)}</td>
@@ -730,12 +749,12 @@ $('#ab-kopieren').onclick = async () => {
   const zeilen = [['Firma', 'Datum', 'Gegenpartei', 'Verwendungszweck', 'Betrag'].join('\t')];
   for (const g of gruppen) {
     for (const tx of g.buchungen) {
-      zeilen.push([g.marke, datumDe(tx.booking_date), tx.counterparty || '',
+      zeilen.push([g.name || g.marke, datumDe(tx.booking_date), tx.counterparty || '',
         (tx.purpose || '').replace(/\s+/g, ' '), (tx.amount_cents / 100).toFixed(2)].join('\t'));
     }
-    zeilen.push([`${g.marke} — Summe Bank`, '', '', '', (g.bank_cents / 100).toFixed(2)].join('\t'));
+    zeilen.push([`${g.name || g.marke} — Summe Bank`, '', '', '', (g.bank_cents / 100).toFixed(2)].join('\t'));
     if (g.belege.length) {
-      zeilen.push([`${g.marke} — Summe vorhandener Belege`, '', '', '',
+      zeilen.push([`${g.name || g.marke} — Summe vorhandener Belege`, '', '', '',
         (g.belege_cents / 100).toFixed(2)].join('\t'));
     }
   }
@@ -748,6 +767,12 @@ $('#ab-kopieren').onclick = async () => {
     console.log(text);
     melde('Zwischenablage nicht erlaubt - die Liste steht in der Browser-Konsole.', 'fehler');
   }
+};
+
+$('#ab-ausgenommen-zeigen').onclick = (e) => {
+  const box = $('#ab-ausgenommen');
+  box.hidden = !box.hidden;
+  e.target.textContent = box.hidden ? 'anzeigen' : 'ausblenden';
 };
 
 $('#ab-erledigt-zeigen').onclick = (e) => {
@@ -1022,6 +1047,32 @@ async function ladeLogbuch() {
 }
 
 // --- Kürzel -----------------------------------------------------------------
+
+async function ladeAusnahmen() {
+  try {
+    const liste = await holen('/api/ausnahmen');
+    $('#ausnahme-liste').innerHTML = liste.map((a) => `
+      <tr><td><strong>${esc(a.muster)}</strong></td><td class="klein-text leise">${esc(a.grund)}</td>
+      <td class="rechts"><button class="knopf gefahr klein a-loeschen" data-id="${a.id}">×</button></td></tr>`).join('')
+      || '<tr><td colspan="3" class="leise klein-text">Keine Ausnahmen — jede Ausgabe verlangt einen Beleg.</td></tr>';
+    $$('.a-loeschen').forEach((b) => {
+      b.onclick = () => api(`/api/ausnahmen/${b.dataset.id}`, { method: 'DELETE' })
+        .then(() => Promise.all([ladeAusnahmen(), ladeAbgleich()])).catch(fehlerBehandeln);
+    });
+  } catch (err) { fehlerBehandeln(err); }
+}
+
+$('#ausnahme-speichern').onclick = async () => {
+  const muster = $('#ausnahme-muster').value.trim();
+  if (!muster) return melde('Muster eintragen.', 'fehler');
+  try {
+    await senden('/api/ausnahmen', { muster, grund: $('#ausnahme-grund').value.trim() });
+    $('#ausnahme-muster').value = '';
+    $('#ausnahme-grund').value = '';
+    await Promise.all([ladeAusnahmen(), ladeAbgleich()]);
+    melde('Ausnahme gespeichert.', 'erfolg');
+  } catch (err) { fehlerBehandeln(err); }
+};
 
 async function ladeKuerzel() {
   try {

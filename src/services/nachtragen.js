@@ -5,6 +5,7 @@ import { config } from '../config.js';
 import { storage } from './storage/index.js';
 import { ergaenzeBelegdaten } from './belegdaten.js';
 import { gleicheAb, markiereBuchungen } from './abgleich.js';
+import { vergleichsname } from './marken.js';
 
 // Holt nach, was fuer aeltere Belege noch fehlt.
 //
@@ -62,6 +63,17 @@ export async function nachtragen(periodId = null, { verschieben = true, auslesen
     if (MUELL.test(a.aussteller) || MUELL.test(a.marke) || MUELL.test(a.doc_date)) {
       run("UPDATE artifacts SET aussteller = '', marke = '', doc_date = NULL WHERE id = ?", a.id);
       a.aussteller = ''; a.marke = ''; a.doc_date = null;
+    }
+
+    // Die Markenliste aendert sich - LinkedIn rechnet inzwischen getrennt von
+    // Microsoft ab. Der Vergleichsname wird deshalb bei jedem Lauf neu aus dem
+    // Aussteller gebildet; das kostet keinen Aufruf beim Modell.
+    if (a.aussteller) {
+      const marke = vergleichsname(a.aussteller);
+      if (marke && marke !== a.marke) {
+        run('UPDATE artifacts SET marke = ? WHERE id = ?', marke, a.id);
+        a.marke = marke;
+      }
     }
 
     // 2 - auslesen, was noch keinen Betrag hat oder dessen Waehrung fehlt.

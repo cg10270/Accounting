@@ -257,6 +257,16 @@ CREATE TABLE IF NOT EXISTS belegzuordnung (
 );
 CREATE INDEX IF NOT EXISTS idx_zuordnung_period ON belegzuordnung(period_id);
 
+-- Buchungen, zu denen es keinen Beleg zu beschaffen gibt: Loehne und
+-- Sozialabgaben laufen ueber die Lohnbuchhaltung, Bankentgelte ueber den
+-- Kontoauszug selbst. Sie stehen sonst dauerhaft in der Liste des Fehlenden.
+CREATE TABLE IF NOT EXISTS ausnahmen (
+  id     INTEGER PRIMARY KEY,
+  muster TEXT NOT NULL UNIQUE,
+  grund  TEXT NOT NULL DEFAULT '',
+  aktiv  INTEGER NOT NULL DEFAULT 1
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL

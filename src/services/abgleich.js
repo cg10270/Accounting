@@ -1,5 +1,6 @@
 import { all, get, run } from '../db.js';
-import { vergleichsname } from './marken.js';
+import { vergleichsname, anzeigename } from './marken.js';
+import { ausnahmeFuer, liste as ausnahmenliste } from './ausnahmen.js';
 import { normalizeName } from './bank/grouping.js';
 
 // Der Abgleich zwischen Kontoauszug und Belegen.
@@ -174,15 +175,21 @@ export function uebersicht(periodId) {
 
   const offen = [];
   const erledigt = [];
+  const ausgenommen = [];
   // Geldeingaenge sind Kundenzahlungen und Erstattungen - dafuer gibt es keine
   // Eingangsrechnung zu beschaffen. Sie wuerden die Liste der fehlenden
   // Belege nur aufblaehen und die Summe unbrauchbar machen.
   const eingaenge = buchungen.filter((tx) => tx.amount_cents >= 0);
+  const ausnahmen = ausnahmenliste();
+
   for (const tx of buchungen.filter((tx) => tx.amount_cents < 0)) {
+    const ausnahme = ausnahmeFuer(tx, ausnahmen);
+    if (ausnahme && !nachTx.has(tx.id)) { ausgenommen.push({ ...tx, ausnahme }); continue; }
     const belege = nachTx.get(tx.id) || [];
     const zeile = {
       ...tx,
       anzeige: tx.marke || vergleichsname(`${tx.counterparty} ${tx.purpose}`),
+      anzeige_name: anzeigename(tx.marke || vergleichsname(`${tx.counterparty} ${tx.purpose}`)),
       belege,
       // Ein Vorschlag ist geprueft, sobald ihn jemand bestaetigt hat.
       bestaetigt: belege.some((b) => b.status === 'bestaetigt'),
@@ -215,6 +222,7 @@ export function uebersicht(periodId) {
   };
   for (const tx of offen) gruppe(tx.anzeige).buchungen.push(tx);
   for (const b of ohneBuchung) gruppe(b.marke || vergleichsname(b.aussteller || '')).belege.push(b);
+  for (const g of gruppen.values()) g.name = anzeigename(g.marke);
 
   const gruppenliste = [...gruppen.values()]
     .map((g) => {
@@ -230,16 +238,19 @@ export function uebersicht(periodId) {
         differenz_cents: bank - belege,
       };
     })
-    .sort((a, b) => a.marke.localeCompare(b.marke, 'de'));
+    .sort((a, b) => (a.name || a.marke).localeCompare(b.name || b.marke, 'de'));
 
   return {
     offen,
     erledigt,
+    ausgenommen,
     ohneBuchung,
     gruppen: gruppenliste,
     zahlen: {
       buchungen: buchungen.length,
-      ausgaben: offen.length + erledigt.length,
+      ausgaben: offen.length + erledigt.length + ausgenommen.length,
+      ausgenommen: ausgenommen.length,
+      ausgenommen_cents: summe(ausgenommen, 'amount_cents'),
       eingaenge: eingaenge.length,
       eingaenge_cents: summe(eingaenge, 'amount_cents'),
       offen: offen.length,

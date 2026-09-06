@@ -17,6 +17,7 @@ import * as portal from './services/browser/portal.js';
 import * as postfach from './services/postfach.js';
 import { ergaenzeBelegdaten } from './services/belegdaten.js';
 import * as abgleich from './services/abgleich.js';
+import * as ausnahmen from './services/ausnahmen.js';
 import { nachtragen } from './services/nachtragen.js';
 import * as checkliste from './services/checkliste.js';
 import { erstelleBewirtungsbeleg, erstelleSpesenabrechnung, kombiniere } from './services/docgen.js';
@@ -525,6 +526,20 @@ router.post('/api/bank/buchungen/:id/beleg', async (req, res) => {
   json(res, { ...get('SELECT * FROM artifacts WHERE id = ?', datei.id), analyse }, 201);
 });
 
+// --- Ausnahmen: Buchungen ohne Beleg ----------------------------------------
+
+router.get('/api/ausnahmen', (req, res) => json(res, ausnahmen.liste()));
+
+router.post('/api/ausnahmen', async (req, res) => {
+  const { muster, grund } = await leseJson(req);
+  json(res, ausnahmen.lege(muster, grund || ''), 201);
+});
+
+router.delete('/api/ausnahmen/:id', (req, res) => {
+  ausnahmen.loesche(req.params.id);
+  json(res, { geloescht: true });
+});
+
 // --- Abgleich Bank <-> Belege -----------------------------------------------
 
 router.get('/api/periods/:id/abgleich', (req, res) => json(res, abgleich.uebersicht(req.params.id)));
@@ -679,6 +694,10 @@ const server = http.createServer(async (req, res) => {
     else res.end();
   }
 });
+
+// Ohne Ausnahmen stuenden Loehne, Sozialabgaben und Bankentgelte dauerhaft in
+// der Liste des Fehlenden. Bestehende Eintraege bleiben unberuehrt.
+if (!ausnahmen.liste().length) ausnahmen.seed();
 
 server.listen(config.port, config.host, () => {
   console.log(`Buchhaltungsvorbereitung laeuft auf http://${config.host}:${config.port}`);

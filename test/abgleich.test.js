@@ -13,6 +13,7 @@ process.env.VAULT_PASSPHRASE = 'test-passphrase';
 const { bewerte, betragPasst, umrechnungMoeglich, gleicheAb, uebersicht, markiereBuchungen } = await import('../src/services/abgleich.js');
 const { vergleichsname } = await import('../src/services/marken.js');
 const { pruefe } = await import('../src/services/beleganalyse.js');
+const { ausnahmeFuer, seed: seedAusnahmen, lege } = await import('../src/services/ausnahmen.js');
 const { run, get, all } = await import('../src/db.js');
 
 const tx = (o) => ({ counterparty: '', purpose: '', booking_date: '2026-08-15', marke: '', ...o });
@@ -237,5 +238,45 @@ describe('Gruppierung der offenen Buchungen', () => {
     assert.equal(openai.bank_cents, 8830);
     assert.equal(openai.belege_cents, 9000);
     assert.equal(openai.differenz_cents, -170);
+  });
+});
+
+seedAusnahmen();
+
+describe('Buchungen ohne Belegpflicht', () => {
+  const buchung = (counterparty, purpose = '') => ({ counterparty, purpose, amount_cents: -100000 });
+
+  test('Löhne, Krankenkasse und Berufsgenossenschaft fallen heraus', () => {
+    assert.ok(ausnahmeFuer(buchung('LexAid GmbH', 'Gehalt August 2026')));
+    assert.ok(ausnahmeFuer(buchung('AOK Nordost', 'Beitrag 08/2026')));
+    assert.ok(ausnahmeFuer(buchung('Finanzamt', 'Lohnsteuer 08/2026')));
+    assert.ok(ausnahmeFuer(buchung('VBG', 'Berufsgenossenschaft')));
+  });
+
+  test('die eigene Bank fällt heraus', () => {
+    assert.ok(ausnahmeFuer(buchung('PNL Fintech GmbH', 'Kontoführung')));
+  });
+
+  test('eine gewöhnliche Rechnung nicht', () => {
+    assert.equal(ausnahmeFuer(buchung('OPENAI', 'Subscription')), null);
+  });
+
+  test('eigene Muster wirken sofort', () => {
+    assert.equal(ausnahmeFuer(buchung('Musterkasse eG', 'Beitrag')), null);
+    lege('Musterkasse', 'Testfall');
+    assert.ok(ausnahmeFuer(buchung('Musterkasse eG', 'Beitrag')));
+  });
+});
+
+describe('Marken, die getrennt abrechnen', () => {
+  test('LinkedIn und Microsoft Advertising sind nicht dasselbe wie Microsoft', () => {
+    assert.equal(vergleichsname('LinkedIn Ireland Unlimited Company'), 'linkedin');
+    assert.equal(vergleichsname('Microsoft Advertising'), 'microsoft advertising');
+    assert.equal(vergleichsname('Microsoft Ireland Operations'), 'microsoft');
+  });
+
+  test('Facebook gehört zu Meta', () => {
+    assert.equal(vergleichsname('FACEBOOK'), 'meta');
+    assert.equal(vergleichsname('Facebook Ireland Ltd'), 'meta');
   });
 });
