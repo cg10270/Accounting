@@ -240,6 +240,23 @@ CREATE TABLE IF NOT EXISTS postfach_import (
   UNIQUE (message_id, attachment_id)
 );
 
+-- Zuordnung Bankbuchung <-> Beleg. Der Abgleich legt Vorschlaege an, der
+-- Mensch bestaetigt oder verwirft sie. Bestaetigtes und Verworfenes ueberlebt
+-- jeden erneuten Durchlauf.
+CREATE TABLE IF NOT EXISTS belegzuordnung (
+  id          INTEGER PRIMARY KEY,
+  period_id   INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+  tx_id       INTEGER NOT NULL REFERENCES bank_tx(id) ON DELETE CASCADE,
+  artifact_id INTEGER NOT NULL REFERENCES artifacts(id) ON DELETE CASCADE,
+  quelle      TEXT    NOT NULL DEFAULT 'automatisch',  -- automatisch | manuell
+  status      TEXT    NOT NULL DEFAULT 'vorschlag',    -- vorschlag | bestaetigt | verworfen
+  punkte      INTEGER NOT NULL DEFAULT 0,
+  begruendung TEXT    NOT NULL DEFAULT '',
+  created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (tx_id, artifact_id)
+);
+CREATE INDEX IF NOT EXISTS idx_zuordnung_period ON belegzuordnung(period_id);
+
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -257,6 +274,14 @@ for (const [tabelle, spalte, definition] of [
   // etwa unterscheidet erst die Groessenordnung Werbung von Software.
   ['lieferant_muster', 'betrag_min_cents', 'INTEGER'],
   ['lieferant_muster', 'betrag_max_cents', 'INTEGER'],
+  // Was beim Auslesen aus dem Beleg gelesen wurde. "marke" ist die
+  // gemeinsame Bezeichnung, unter der Beleg und Buchung verglichen werden.
+  ['artifacts', 'marke', "TEXT NOT NULL DEFAULT ''"],
+  ['artifacts', 'aussteller', "TEXT NOT NULL DEFAULT ''"],
+  ['artifacts', 'rechnungsnummer', "TEXT NOT NULL DEFAULT ''"],
+  ['artifacts', 'analysiert_am', 'TEXT'],
+  ['artifacts', 'analyse_fehler', "TEXT NOT NULL DEFAULT ''"],
+  ['bank_tx', 'marke', "TEXT NOT NULL DEFAULT ''"],
 ]) {
   const vorhanden = db.prepare(`PRAGMA table_info(${tabelle})`).all().some((s) => s.name === spalte);
   if (!vorhanden) db.exec(`ALTER TABLE ${tabelle} ADD COLUMN ${spalte} ${definition}`);

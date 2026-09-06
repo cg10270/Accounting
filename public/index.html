@@ -16,7 +16,8 @@
 </header>
 
 <nav>
-  <button data-reiter="monat" class="aktiv">Monat</button>
+  <button data-reiter="abgleich" class="aktiv">Abgleich</button>
+  <button data-reiter="monat">Monat</button>
   <button data-reiter="postfach">Postfach</button>
   <button data-reiter="lieferanten">Lieferanten</button>
   <button data-reiter="aufgaben">Weitere Aufgaben</button>
@@ -67,7 +68,7 @@
   </section>
 
   <!-- -------------------------------- Monat -------------------------------- -->
-  <section class="reiter aktiv" id="reiter-monat">
+  <section class="reiter" id="reiter-monat">
 
     <div class="karte">
       <h2>Kontoauszug</h2>
@@ -97,6 +98,54 @@
         Der Buchungstext wird dabei als Erkennungsmuster übernommen.
       </div>
       <div id="ohne-zuordnung"></div>
+    </div>
+  </section>
+
+  <!-- ------------------------------- Abgleich ------------------------------- -->
+  <section class="reiter aktiv" id="reiter-abgleich">
+    <div class="karte">
+      <h2>Was noch fehlt</h2>
+      <div class="inhalt">
+        <p class="klein-text leise" style="margin-top:0">
+          Belege werden beim Eingang ausgelesen und den Bankbuchungen zugeordnet:
+          gleiche Firma und gleicher Betrag, bei mehreren Belegen derselben Firma
+          entscheidet die Rechnungsnummer. Kleine Abweichungen durch Währungsumrechnung
+          gelten als Treffer. Was zusammengefunden hat, verschwindet aus der Liste.
+        </p>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button class="knopf" id="ab-holen">Postfach holen und abgleichen</button>
+          <button class="knopf leise" id="ab-rechnen">Nur neu rechnen</button>
+          <span class="klein-text leise" id="ab-stand"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="karte">
+      <h2 style="display:flex;align-items:center;gap:12px">
+        <span style="flex:1">Offene Buchungen</span>
+        <span class="klein-text leise" id="ab-offen-zahl"></span>
+      </h2>
+      <div id="ab-offen"><div class="leer">Noch nichts abgeglichen.</div></div>
+    </div>
+
+    <div class="karte">
+      <h2 style="display:flex;align-items:center;gap:12px">
+        <span style="flex:1">Belege ohne Buchung</span>
+        <span class="klein-text leise" id="ab-ohne-zahl"></span>
+      </h2>
+      <div class="inhalt klein-text leise" style="border-bottom:1px solid var(--rand)">
+        Entweder anders bezahlt (bar, Kreditkarte eines Kollegen) oder der Betrag
+        wurde nicht gelesen. Von Hand einer Buchung zuordnen oder stehen lassen.
+      </div>
+      <div id="ab-ohne"></div>
+    </div>
+
+    <div class="karte">
+      <h2 style="display:flex;align-items:center;gap:12px">
+        <span style="flex:1">Erledigt</span>
+        <button class="knopf leise klein" id="ab-erledigt-zeigen">anzeigen</button>
+      </h2>
+      <div id="ab-erledigt" hidden></div>
     </div>
   </section>
 

@@ -16,6 +16,7 @@ import * as lieferanten from './services/lieferanten.js';
 import * as portal from './services/browser/portal.js';
 import * as postfach from './services/postfach.js';
 import { ergaenzeBelegdaten } from './services/belegdaten.js';
+import * as abgleich from './services/abgleich.js';
 import * as checkliste from './services/checkliste.js';
 import { erstelleBewirtungsbeleg, erstelleSpesenabrechnung, kombiniere } from './services/docgen.js';
 import { analysiereQuittung } from './services/beleganalyse.js';
@@ -219,6 +220,8 @@ router.post('/api/periods/:pid/positionen/:posid/dateien', async (req, res) => {
   run('UPDATE artifacts SET position_id = ?, vendor = ? WHERE id = ?',
     position.id, lieferant?.name || '', datei.id);
   const analyse = await ergaenzeBelegdaten(datei.id, { buffer, mime: req.headers['content-type'], filename });
+  // Ein neuer Beleg kann eine offene Buchung schliessen - sofort nachrechnen.
+  abgleich.gleicheAb(datei.period_id);
   json(res, { ...get('SELECT * FROM artifacts WHERE id = ?', datei.id), analyse }, 201);
 });
 
@@ -276,6 +279,8 @@ router.post('/api/periods/:pid/lieferanten/:lid/dateien', async (req, res) => {
   });
   run('UPDATE artifacts SET vendor = ? WHERE id = ?', lieferant.name, datei.id);
   const analyse = await ergaenzeBelegdaten(datei.id, { buffer, mime: req.headers['content-type'], filename });
+  // Ein neuer Beleg kann eine offene Buchung schliessen - sofort nachrechnen.
+  abgleich.gleicheAb(datei.period_id);
   json(res, { ...get('SELECT * FROM artifacts WHERE id = ?', datei.id), analyse }, 201);
 });
 
@@ -289,6 +294,15 @@ router.post('/api/periods/:id/postfach/suche', async (req, res) => {
 router.post('/api/periods/:id/postfach/analysieren', async (req, res) => {
   const { auswahl } = await leseJson(req);
   json(res, await postfach.analysiere(req.params.id, auswahl || []));
+});
+
+// Ohne Rueckfragen: suchen, alles Neue uebernehmen, auslesen, abgleichen.
+router.post('/api/periods/:id/postfach/holen', async (req, res) => {
+  const periodId = Number(req.params.id);
+  const { nachlaufTage } = await leseJson(req);
+  const ergebnis = await postfach.holeAlles(periodId, { nachlaufTage });
+  abgleich.markiereBuchungen(periodId);
+  json(res, { ...ergebnis, abgleich: abgleich.gleicheAb(periodId) });
 });
 
 router.post('/api/periods/:id/postfach/uebernehmen', async (req, res) => {
@@ -406,10 +420,13 @@ router.post('/api/periods/:id/bank/import', async (req, res) => {
     );
   }
   const zuordnung = lieferanten.ordneBuchungenZu(periodId);
+  abgleich.markiereBuchungen(periodId);
+  const abgleichErgebnis = abgleich.gleicheAb(periodId);
 
   json(res, {
     statement_id: statementId,
     zuordnung,
+    abgleich: abgleichErgebnis,
     buchungen: ergebnis.transaktionen.length,
     verworfen: ergebnis.verworfen.length,
     erkannte_spalten: ergebnis.mapping,
@@ -461,6 +478,47 @@ router.patch('/api/bank/buchungen/:id', async (req, res) => {
     }
   }
   json(res, { buchung: aktualisiert, anfrage });
+});
+
+// Beleg direkt an einer offenen Buchung hochladen. Er wird ausgelesen und
+// fest mit dieser Buchung verbunden - der Abgleich muss nicht raten.
+router.post('/api/bank/buchungen/:id/beleg', async (req, res) => {
+  const tx = get('SELECT * FROM bank_tx WHERE id = ?', Number(req.params.id));
+  if (!tx) throw new Error('Buchung nicht gefunden.');
+  const filename = decodeURIComponent(req.headers['x-filename'] || 'beleg.pdf');
+  const mime = req.headers['content-type'] || 'application/octet-stream';
+  const buffer = await leseBody(req);
+  if (!buffer.length) throw new Error('Die hochgeladene Datei ist leer.');
+
+  const datei = await speichereDatei({
+    periodId: tx.period_id, filename, mime, buffer, source: 'manuell',
+    ordner: tx.marke || tx.counterparty || 'Bank',
+  });
+  const analyse = await ergaenzeBelegdaten(datei.id, { buffer, mime, filename });
+  abgleich.verbinde(tx.id, datei.id);
+  json(res, { ...get('SELECT * FROM artifacts WHERE id = ?', datei.id), analyse }, 201);
+});
+
+// --- Abgleich Bank <-> Belege -----------------------------------------------
+
+router.get('/api/periods/:id/abgleich', (req, res) => json(res, abgleich.uebersicht(req.params.id)));
+
+// Neu rechnen: nach jedem Import oder nachgetragenen Beleg sinnvoll.
+router.post('/api/periods/:id/abgleich', (req, res) => {
+  const periodId = Number(req.params.id);
+  abgleich.markiereBuchungen(periodId);
+  const lauf = abgleich.gleicheAb(periodId);
+  json(res, { ...lauf, ...abgleich.uebersicht(periodId) });
+});
+
+router.post('/api/zuordnungen/:id/entscheiden', async (req, res) => {
+  const { status } = await leseJson(req);
+  json(res, abgleich.entscheide(req.params.id, status));
+});
+
+router.post('/api/periods/:id/zuordnungen', async (req, res) => {
+  const { tx_id, artifact_id } = await leseJson(req);
+  json(res, abgleich.verbinde(tx_id, artifact_id), 201);
 });
 
 // --- Logbuch ----------------------------------------------------------------

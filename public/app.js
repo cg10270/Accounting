@@ -12,6 +12,7 @@ const zustand = {
   status: null,
   monat: null,
   lieferanten: [],
+  abgleich: null,
   offen: new Set(),      // aufgeklappte Bereiche (b<id>) und Positionen (p<id>)
 };
 
@@ -86,7 +87,7 @@ async function ladePerioden() {
 }
 
 async function ladeAlles() {
-  await Promise.all([ladeMonat(), ladeLieferanten(), ladeAufgaben(), ladeLogbuch(), ladeKuerzel()]);
+  await Promise.all([ladeAbgleich(), ladeMonat(), ladeLieferanten(), ladeAufgaben(), ladeLogbuch(), ladeKuerzel()]);
 }
 
 // --- Aufgaben ---------------------------------------------------------------
@@ -388,7 +389,7 @@ function zeichneOhneZuordnung(buchungen) {
 }
 
 function verdrahteMonat() {
-  const neuLaden = () => Promise.all([ladeMonat(), ladeLieferanten()]);
+  const neuLaden = () => Promise.all([ladeAbgleich(), ladeMonat(), ladeLieferanten()]);
   const umschalten = (schluessel) => {
     zustand.offen.has(schluessel) ? zustand.offen.delete(schluessel) : zustand.offen.add(schluessel);
     zeichneMonat();
@@ -459,7 +460,7 @@ async function belegeHochladen(positionId, dateien) {
     } catch (err) { fehlerBehandeln(err); }
   }
   melde(analyseText(dateien.length, ergebnisse), 'erfolg');
-  await Promise.all([ladeMonat(), ladeLieferanten()]);
+  await Promise.all([ladeAbgleich(), ladeMonat(), ladeLieferanten()]);
 }
 
 async function portalOeffnen(knopf, lieferantId) {
@@ -492,6 +493,162 @@ function beobachtePortal(lieferantId) {
     }
   }, 2500);
 }
+
+// --- Abgleich: was fehlt noch? ----------------------------------------------
+
+async function ladeAbgleich() {
+  if (!zustand.periodeId) return;
+  try {
+    zustand.abgleich = await holen(`/api/periods/${zustand.periodeId}/abgleich`);
+    zeichneAbgleich();
+  } catch (err) { fehlerBehandeln(err); }
+}
+
+function belegZeile(b) {
+  const teile = [b.aussteller || b.beleg_marke || b.marke, b.rechnungsnummer && `Nr. ${b.rechnungsnummer}`,
+    b.beleg_betrag != null ? euro(b.beleg_betrag) : (b.amount_cents != null ? euro(b.amount_cents) : 'ohne Betrag'),
+    datumDe(b.doc_date)].filter(Boolean);
+  return `<a href="/api/dateien/${b.artifact_id || b.id}/inhalt" target="_blank">${esc(b.filename)}</a>
+          <span class="leise"> · ${esc(teile.join(' · '))}</span>`;
+}
+
+function zeichneAbgleich() {
+  const d = zustand.abgleich;
+  if (!d) return;
+  const z = d.zahlen;
+  $('#ab-stand').textContent =
+    `${z.buchungen} Buchungen · ${z.offen} ohne Beleg (${euro(z.offen_cents)}) · ${z.erledigt} erledigt`;
+  $('#ab-offen-zahl').textContent = z.offen ? `${z.offen} · ${euro(z.offen_cents)}` : 'nichts offen';
+  $('#ab-ohne-zahl').textContent = z.belege_ohne_buchung
+    ? `${z.belege_ohne_buchung}${z.belege_ohne_betrag ? ` · ${z.belege_ohne_betrag} ohne gelesenen Betrag` : ''}`
+    : '';
+
+  $('#ab-offen').innerHTML = !d.offen.length
+    ? '<div class="leer">Zu jeder Buchung liegt ein Beleg vor.</div>'
+    : `<table>
+      <thead><tr>
+        <th style="width:90px">Datum</th><th>Firma / Verwendungszweck</th>
+        <th style="width:110px" class="rechts">Betrag</th><th style="width:290px">Beleg besorgen</th>
+      </tr></thead>
+      <tbody>${d.offen.map((tx) => `
+        <tr>
+          <td class="klein-text">${datumDe(tx.booking_date)}</td>
+          <td class="klein-text">
+            <strong>${esc(tx.anzeige || tx.counterparty)}</strong><br>
+            <span class="leise">${esc(tx.purpose || tx.counterparty)}</span>
+            ${tx.angefragt ? `<br><span class="leise">angefragt bei ${esc(tx.angefragt.recipient)} · ${esc(tx.angefragt.status)}</span>` : ''}
+          </td>
+          <td class="rechts">${euro(tx.amount_cents)}</td>
+          <td class="klein-text">
+            <input class="ab-kuerzel klein-text" data-id="${tx.id}" style="width:70px"
+                   placeholder="Kürzel" value="${esc(tx.tag || '')}">
+            <button class="knopf leise klein ab-anfordern" data-id="${tx.id}">anfordern</button>
+            <label class="knopf leise klein" style="cursor:pointer">Beleg…
+              <input type="file" class="ab-datei" data-id="${tx.id}" hidden multiple>
+            </label>
+          </td>
+        </tr>`).join('')}</tbody>
+    </table>`;
+
+  $('#ab-ohne').innerHTML = !d.ohneBuchung.length
+    ? '<div class="leer">Jeder Beleg gehört zu einer Buchung.</div>'
+    : `<table><tbody>${d.ohneBuchung.map((b) => `
+        <tr><td class="klein-text">${belegZeile(b)}
+          ${b.analyse_fehler ? `<br><span class="leise">nicht ausgelesen: ${esc(b.analyse_fehler)}</span>` : ''}
+        </td></tr>`).join('')}</tbody></table>`;
+
+  $('#ab-erledigt').innerHTML = !d.erledigt.length
+    ? '<div class="leer">Noch nichts zugeordnet.</div>'
+    : `<table>
+      <thead><tr><th style="width:90px">Datum</th><th>Buchung</th><th>Beleg</th>
+        <th style="width:110px" class="rechts">Betrag</th><th style="width:150px"></th></tr></thead>
+      <tbody>${d.erledigt.map((tx) => tx.belege.map((b) => `
+        <tr class="${b.status === 'bestaetigt' ? 'ist-erledigt' : ''}">
+          <td class="klein-text">${datumDe(tx.booking_date)}</td>
+          <td class="klein-text"><strong>${esc(tx.anzeige || tx.counterparty)}</strong><br>
+            <span class="leise">${esc(b.begruendung)}</span></td>
+          <td class="klein-text">${belegZeile(b)}</td>
+          <td class="rechts">${euro(tx.amount_cents)}</td>
+          <td class="klein-text">
+            ${b.status === 'bestaetigt' ? '<span class="leise">bestätigt</span>'
+              : `<button class="knopf leise klein ab-ja" data-id="${b.id}">passt</button>
+                 <button class="knopf leise klein ab-nein" data-id="${b.id}">passt nicht</button>`}
+          </td>
+        </tr>`).join('')).join('')}</tbody>
+    </table>`;
+
+  $$('.ab-anfordern').forEach((el) => { el.onclick = () => belegAnfordern(el.dataset.id); });
+  $$('.ab-datei').forEach((el) => {
+    el.onchange = () => { if (el.files.length) belegZuBuchung(el.dataset.id, [...el.files]); };
+  });
+  $$('.ab-ja').forEach((el) => { el.onclick = () => zuordnungEntscheiden(el.dataset.id, 'bestaetigt'); });
+  $$('.ab-nein').forEach((el) => { el.onclick = () => zuordnungEntscheiden(el.dataset.id, 'verworfen'); });
+}
+
+async function zuordnungEntscheiden(id, status) {
+  try {
+    await senden(`/api/zuordnungen/${id}/entscheiden`, { status });
+    await ladeAbgleich();
+  } catch (err) { fehlerBehandeln(err); }
+}
+
+async function belegAnfordern(txId) {
+  const kuerzel = $(`.ab-kuerzel[data-id="${txId}"]`).value.trim();
+  if (!kuerzel) return melde('Kürzel eintragen, an wen die Anfrage gehen soll.', 'fehler');
+  try {
+    const r = await senden(`/api/bank/buchungen/${txId}`, { tag: kuerzel }, 'PATCH');
+    melde(r.anfrage ? `Angefragt bei ${r.anfrage.recipient}.` : 'Kürzel gespeichert.', 'erfolg');
+    await ladeAbgleich();
+  } catch (err) { fehlerBehandeln(err); }
+}
+
+async function belegZuBuchung(txId, dateien) {
+  const ergebnisse = [];
+  for (const datei of dateien) {
+    try {
+      ergebnisse.push(await api(`/api/bank/buchungen/${txId}/beleg`, {
+        method: 'POST',
+        headers: { 'Content-Type': datei.type || 'application/octet-stream', 'X-Filename': encodeURIComponent(datei.name) },
+        body: datei,
+      }));
+    } catch (err) { fehlerBehandeln(err); }
+  }
+  melde(analyseText(dateien.length, ergebnisse), 'erfolg');
+  await Promise.all([ladeAbgleich(), ladeMonat()]);
+}
+
+$('#ab-rechnen').onclick = async (e) => {
+  e.target.disabled = true;
+  try {
+    zustand.abgleich = await senden(`/api/periods/${zustand.periodeId}/abgleich`, {});
+    zeichneAbgleich();
+    melde(`${zustand.abgleich.vorschlaege} Zuordnung(en) gefunden.`, 'erfolg');
+  } catch (err) { fehlerBehandeln(err); }
+  e.target.disabled = false;
+};
+
+$('#ab-holen').onclick = async (e) => {
+  e.target.disabled = true;
+  const alt = e.target.textContent;
+  e.target.textContent = 'Holt und liest …';
+  try {
+    const r = await senden(`/api/periods/${zustand.periodeId}/postfach/holen`,
+      { nachlaufTage: Number($('#pf-nachlauf').value) || 10 });
+    const teile = [`${r.nachrichten} Mail(s) durchsucht`, `${r.uebernommen.length} Beleg(e) übernommen`];
+    if (r.uebersprungen.length) teile.push(`${r.uebersprungen.length} bereits vorhanden`);
+    if (r.fehler.length) teile.push(`${r.fehler.length} fehlgeschlagen`);
+    melde(teile.join(', ') + '.', r.fehler.length ? 'fehler' : 'erfolg');
+    await Promise.all([ladeAbgleich(), ladeMonat(), ladeLieferanten()]);
+  } catch (err) { fehlerBehandeln(err); }
+  e.target.disabled = false;
+  e.target.textContent = alt;
+};
+
+$('#ab-erledigt-zeigen').onclick = (e) => {
+  const box = $('#ab-erledigt');
+  box.hidden = !box.hidden;
+  e.target.textContent = box.hidden ? 'anzeigen' : 'ausblenden';
+};
 
 // --- Postfach ----------------------------------------------------------------
 

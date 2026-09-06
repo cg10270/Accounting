@@ -2,6 +2,7 @@ import { get, run } from '../db.js';
 import { aiEnabled } from '../config.js';
 import { analysiereRechnung } from './beleganalyse.js';
 import { listeLieferanten } from './lieferanten.js';
+import { vergleichsname } from './marken.js';
 
 // Ergaenzt einen frisch hochgeladenen Beleg um die Angaben, die im Dokument
 // stehen und nicht im Dateinamen: Betrag, Belegdatum, Aussteller.
@@ -44,21 +45,32 @@ export async function ergaenzeBelegdaten(artifactId, { buffer, mime, filename })
       lieferanten: listeLieferanten({ nurAktive: true }).map((l) => ({ id: l.id, name: l.name })),
     });
   } catch (err) {
+    run('UPDATE artifacts SET analyse_fehler = ?, analysiert_am = datetime(\'now\') WHERE id = ?',
+      err.message, eintrag.id);
     return { ki: false, fehler: err.message };
   }
 
-  const neu = {};
+  const neu = { analyse_fehler: '' };
   if (eintrag.amount_cents == null && daten.brutto_cents) neu.amount_cents = daten.brutto_cents;
   if (!eintrag.doc_date && daten.datum) neu.doc_date = daten.datum;
   // Der Lieferant steht beim Upload ueber die Position schon fest; nur wenn
   // keiner hinterlegt ist, wird der Vorschlag der KI eingetragen.
   if (!eintrag.vendor && daten.lieferant) neu.vendor = daten.lieferant.name;
+  if (!eintrag.aussteller && daten.aussteller) neu.aussteller = daten.aussteller;
+  if (!eintrag.rechnungsnummer && daten.rechnungsnummer) neu.rechnungsnummer = daten.rechnungsnummer;
 
-  const felder = Object.keys(neu);
-  if (felder.length) {
-    run(`UPDATE artifacts SET ${felder.map((f) => `${f} = ?`).join(', ')} WHERE id = ?`,
-      ...felder.map((f) => neu[f]), eintrag.id);
+  // Die Marke ist der Name, unter dem Beleg und Buchung verglichen werden.
+  // Die eigene Markenliste hat Vorrang - sie ist nachvollziehbar; die
+  // Einschaetzung der KI springt ein, wo sie nichts kennt.
+  if (!eintrag.marke) {
+    const ausText = vergleichsname(daten.aussteller || daten.lieferant?.name || '');
+    const ausKi = daten.marke ? vergleichsname(daten.marke) : '';
+    neu.marke = ausText || ausKi || '';
   }
+
+  const felder = Object.keys(neu).filter((f) => neu[f] !== '' || f === 'analyse_fehler');
+  run(`UPDATE artifacts SET ${felder.map((f) => `${f} = ?`).join(', ')}, analysiert_am = datetime('now') WHERE id = ?`,
+    ...felder.map((f) => neu[f]), eintrag.id);
 
   return {
     ki: true,
@@ -69,6 +81,7 @@ export async function ergaenzeBelegdaten(artifactId, { buffer, mime, filename })
     brutto_cents: daten.brutto_cents,
     ust_cents: daten.ust_cents,
     waehrung: daten.waehrung,
-    uebernommen: felder,
+    marke: neu.marke ?? eintrag.marke,
+    uebernommen: felder.filter((f) => f !== 'analyse_fehler'),
   };
 }

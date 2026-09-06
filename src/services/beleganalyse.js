@@ -137,7 +137,9 @@ Du uebernimmst ausschliesslich Angaben, die tatsaechlich auf dem Beleg stehen.
 Was nicht zweifelsfrei lesbar ist, laesst du leer bzw. auf 0.
 Du raetst niemals einen Betrag, ein Datum oder einen Namen.
 Betraege gibst du in Cent als ganze Zahl an (12,90 Euro entspricht 1290).
-Der Aussteller ist der Rechnungssteller, nicht der Empfaenger (die LexAid GmbH).`;
+Der Aussteller ist der Rechnungssteller, nicht der Empfaenger (die LexAid GmbH).
+Du kennst die Konzerne hinter den Marken und nennst sie: eine Rechnung von
+"Facebook Ireland Ltd" gehoert zu Meta, eine von "Google Ireland Ltd" zu Google.`;
 
 function rechnungWerkzeug(lieferanten) {
   return {
@@ -155,6 +157,12 @@ function rechnungWerkzeug(lieferanten) {
         ust_cents: { type: 'integer', description: 'Ausgewiesene Umsatzsteuer in Cent, 0 wenn nicht ausgewiesen' },
         waehrung: { type: 'string', description: 'Waehrungskuerzel, z.B. EUR oder USD' },
         leistung: { type: 'string', description: 'Was abgerechnet wird, in wenigen Worten' },
+        marke: {
+          type: 'string',
+          description: 'Die Marke oder der Konzern hinter dem Aussteller, unter der die Zahlung im '
+            + 'Kontoauszug erscheint. Beispiele: "Facebook Ireland Ltd" -> Meta, "Google Ireland Ltd" -> Google, '
+            + '"Microsoft Ireland Operations" -> Microsoft. Bei kleinen Anbietern der Firmenname selbst.',
+        },
         lieferant: {
           type: 'string',
           description: 'Passender Lieferant aus der Stammdatenliste. Leer lassen, wenn keiner sicher passt.',
@@ -163,7 +171,7 @@ function rechnungWerkzeug(lieferanten) {
         begruendung: { type: 'string', description: 'Ein Satz: woran der Lieferant erkannt wurde' },
       },
       required: ['lesbar', 'aussteller', 'rechnungsnummer', 'datum', 'brutto_cents', 'ust_cents',
-        'waehrung', 'leistung', 'lieferant', 'begruendung'],
+        'waehrung', 'leistung', 'marke', 'lieferant', 'begruendung'],
       additionalProperties: false,
     },
   };

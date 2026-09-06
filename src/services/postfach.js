@@ -6,6 +6,7 @@ import { speichereDatei } from './ablage.js';
 import { normalizeName } from './bank/grouping.js';
 import { listeLieferanten, betragPasst } from './lieferanten.js';
 import { analysiereRechnung } from './beleganalyse.js';
+import { ergaenzeBelegdaten } from './belegdaten.js';
 
 // Durchsucht das Buchhaltungspostfach nach Belegen und legt sie ab.
 //
@@ -100,6 +101,34 @@ export async function durchsuche(periodId, { nachlaufTage = 10 } = {}) {
     kandidaten,
     neu: kandidaten.filter((k) => !k.schon_uebernommen).length,
     verworfen,
+  };
+}
+
+/**
+ * Der Weg ohne Rueckfragen: Postfach durchsuchen, alles Neue uebernehmen,
+ * auslesen und mit der Bank abgleichen. Wer einzeln entscheiden will,
+ * nutzt weiter durchsuche() und uebernimm().
+ */
+export async function holeAlles(periodId, { nachlaufTage = 10 } = {}) {
+  const fund = await durchsuche(periodId, { nachlaufTage });
+  const neu = fund.kandidaten.filter((k) => !k.schon_uebernommen);
+  const uebernahme = await uebernimm(periodId, neu.map((k) => ({
+    message_id: k.message_id,
+    attachment_id: k.attachment_id,
+    filename: k.filename,
+    mime: k.mime,
+    absender: k.absender,
+    betreff: k.betreff,
+    lieferant_id: k.lieferant?.id ?? null,
+  })));
+
+  return {
+    zeitraum: fund.zeitraum,
+    zugang: fund.zugang,
+    nachrichten: fund.nachrichten,
+    gefunden: fund.kandidaten.length,
+    neu: neu.length,
+    ...uebernahme,
   };
 }
 
@@ -253,7 +282,15 @@ export async function uebernimm(periodId, auswahl = []) {
            VALUES (?, ?, ?, ?, ?, ?)`,
         schluessel.m, schluessel.a, datei.id, period.id, eintrag.absender || '', eintrag.betreff || '');
 
-      ergebnis.uebernommen.push({ id: datei.id, filename: datei.filename, lieferant: lieferant?.name || null });
+      // Direkt auslesen: ohne Betrag und Aussteller kann der Abgleich mit
+      // der Bank nichts anfangen, und niemand soll das von Hand nachtragen.
+      const analyse = await ergaenzeBelegdaten(datei.id, {
+        buffer: inhalt, mime: eintrag.mime, filename: eintrag.filename,
+      });
+
+      ergebnis.uebernommen.push({
+        id: datei.id, filename: datei.filename, lieferant: lieferant?.name || null, analyse,
+      });
     } catch (err) {
       ergebnis.fehler.push({ ...eintrag, fehler: err.message });
     }
