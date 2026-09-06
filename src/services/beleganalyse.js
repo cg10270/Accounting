@@ -129,3 +129,114 @@ export async function analysiereQuittung({ buffer, mime, filename, art = 'bewirt
   }
   return { ki: true, ...daten, offene_punkte: [...offen] };
 }
+
+// --- Eingangsrechnungen aus dem Postfach -------------------------------------
+
+const RECHNUNG_SYSTEM = `Du liest Eingangsrechnungen fuer die deutsche Buchhaltung aus.
+Du uebernimmst ausschliesslich Angaben, die tatsaechlich auf dem Beleg stehen.
+Was nicht zweifelsfrei lesbar ist, laesst du leer bzw. auf 0.
+Du raetst niemals einen Betrag, ein Datum oder einen Namen.
+Betraege gibst du in Cent als ganze Zahl an (12,90 Euro entspricht 1290).
+Der Aussteller ist der Rechnungssteller, nicht der Empfaenger (die LexAid GmbH).`;
+
+function rechnungWerkzeug(lieferanten) {
+  return {
+    name: 'rechnungsdaten_ausgeben',
+    description: 'Gibt die aus der Eingangsrechnung gelesenen Daten strukturiert zurueck.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        lesbar: { type: 'boolean', description: 'Ist der Beleg eine lesbare Rechnung oder Quittung?' },
+        aussteller: { type: 'string', description: 'Firmenname des Rechnungsstellers, leer wenn nicht lesbar' },
+        rechnungsnummer: { type: 'string' },
+        datum: { type: 'string', description: 'Rechnungsdatum im Format JJJJ-MM-TT, sonst leer' },
+        brutto_cents: { type: 'integer', description: 'Endbetrag brutto in Cent, 0 wenn nicht lesbar' },
+        ust_cents: { type: 'integer', description: 'Ausgewiesene Umsatzsteuer in Cent, 0 wenn nicht ausgewiesen' },
+        waehrung: { type: 'string', description: 'Waehrungskuerzel, z.B. EUR oder USD' },
+        leistung: { type: 'string', description: 'Was abgerechnet wird, in wenigen Worten' },
+        lieferant: {
+          type: 'string',
+          description: 'Passender Lieferant aus der Stammdatenliste. Leer lassen, wenn keiner sicher passt.',
+          enum: ['', ...lieferanten.map((l) => l.name)],
+        },
+        begruendung: { type: 'string', description: 'Ein Satz: woran der Lieferant erkannt wurde' },
+      },
+      required: ['lesbar', 'aussteller', 'rechnungsnummer', 'datum', 'brutto_cents', 'ust_cents',
+        'waehrung', 'leistung', 'lieferant', 'begruendung'],
+      additionalProperties: false,
+    },
+  };
+}
+
+// Claude liest PDFs und Bilder unmittelbar - ein separates OCR gibt es nicht.
+function anhangBlock(buffer, mime, filename) {
+  const typ = `${mime || ''} ${filename || ''}`.toLowerCase();
+  if (typ.includes('pdf')) {
+    return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: buffer.toString('base64') } };
+  }
+  if (/png|jpe?g|webp/.test(typ)) {
+    const medienTyp = typ.includes('png') ? 'image/png' : typ.includes('webp') ? 'image/webp' : 'image/jpeg';
+    return { type: 'image', source: { type: 'base64', media_type: medienTyp, data: buffer.toString('base64') } };
+  }
+  throw new Error(`Belege vom Typ ${mime || 'unbekannt'} können nicht ausgelesen werden (PDF, PNG oder JPEG).`);
+}
+
+/**
+ * Liest eine Eingangsrechnung aus und ordnet sie einem Lieferanten der
+ * Stammdaten zu. Die Zuordnung ist ein Vorschlag - entschieden wird in der
+ * Oberflaeche.
+ * @param {object} p
+ * @param {Buffer} p.buffer
+ * @param {string} p.mime
+ * @param {string} p.filename
+ * @param {Array}  p.lieferanten  [{ id, name }]
+ * @param {string} p.absender     Absender der Mail, als zusaetzlicher Hinweis
+ * @param {string} p.betreff      Betreff der Mail, als zusaetzlicher Hinweis
+ */
+export async function analysiereRechnung({ buffer, mime, filename, lieferanten = [], absender = '', betreff = '' }) {
+  if (!aiEnabled) {
+    return {
+      ki: false,
+      lesbar: false,
+      hinweis: 'Kein ANTHROPIC_API_KEY gesetzt - der Beleg wurde nicht ausgelesen.',
+    };
+  }
+
+  const werkzeug = rechnungWerkzeug(lieferanten);
+  const response = await client.messages.create({
+    model: config.model,
+    max_tokens: 4000,
+    system: RECHNUNG_SYSTEM,
+    tools: [werkzeug],
+    tool_choice: { type: 'tool', name: werkzeug.name },
+    messages: [{
+      role: 'user',
+      content: [
+        anhangBlock(buffer, mime, filename),
+        {
+          type: 'text',
+          text: [
+            'Lies diese Eingangsrechnung aus und ordne sie einem Lieferanten zu.',
+            `Dateiname: ${filename || 'unbekannt'}`,
+            absender ? `Mail von: ${absender}` : '',
+            betreff ? `Betreff: ${betreff}` : '',
+            '',
+            'Stammdaten-Lieferanten:',
+            ...lieferanten.map((l) => `- ${l.name}`),
+          ].filter(Boolean).join('\n'),
+        },
+      ],
+    }],
+  });
+
+  if (response.stop_reason === 'refusal') {
+    throw new Error(`Auslesen abgelehnt: ${response.stop_details?.explanation || 'kein Grund angegeben'}`);
+  }
+  const block = response.content.find((b) => b.type === 'tool_use' && b.name === werkzeug.name);
+  if (!block) throw new Error('Der Beleg konnte nicht ausgelesen werden.');
+
+  const daten = block.input;
+  const gewaehlt = daten.lieferant ? lieferanten.find((l) => l.name === daten.lieferant) : null;
+  return { ki: true, ...daten, lieferant: gewaehlt ? { id: gewaehlt.id, name: gewaehlt.name } : null };
+}

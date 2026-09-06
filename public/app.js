@@ -518,7 +518,8 @@ function zeichnePostfach() {
     <table>
       <thead><tr>
         <th style="width:30px"></th><th>Anhang</th><th>Absender / Betreff</th>
-        <th style="width:150px">Lieferant</th><th style="width:100px" class="rechts">Betrag €</th>
+        <th style="width:150px">Lieferant</th><th style="width:130px">Belegdatum</th>
+        <th style="width:100px" class="rechts">Betrag €</th>
       </tr></thead>
       <tbody>${d.kandidaten.map((k, i) => `
         <tr class="${k.schon_uebernommen ? 'ist-erledigt' : ''}">
@@ -527,7 +528,8 @@ function zeichnePostfach() {
             <strong>${esc(k.filename)}</strong><br>
             <span class="leise">${Math.round(k.size / 1024)} kB${k.schon_uebernommen ? ' · bereits übernommen' : ''}</span>
           </td>
-          <td class="klein-text">${esc(k.absender)}<br><span class="leise">${esc(k.betreff)}</span></td>
+          <td class="klein-text">${esc(k.absender)}<br><span class="leise">${esc(k.betreff)}</span>
+            <div class="leise pf-analyse" data-i="${i}"></div></td>
           <td>
             <select class="pf-lieferant klein-text" data-i="${i}">
               <option value="">— ohne —</option>
@@ -535,6 +537,7 @@ function zeichnePostfach() {
                 `<option value="${l.id}" ${k.lieferant?.id === l.id ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}
             </select>
           </td>
+          <td><input type="date" class="pf-datum klein-text" data-i="${i}"></td>
           <td><input type="number" step="0.01" class="pf-betrag klein-text rechts" data-i="${i}" placeholder="—"></td>
         </tr>`).join('')}</tbody>
     </table>`;
@@ -544,11 +547,54 @@ $('#pf-alle').onclick = () => {
   $$('.pf-wahl').forEach((el) => { if (!el.disabled) el.checked = true; });
 };
 
+// Die Mail nennt selten Betrag und Rechnungsdatum - beides steht im PDF.
+// Deshalb liest die KI die ausgewählten Anhänge und füllt die Felder vor.
+$('#pf-analysieren').onclick = async (e) => {
+  const gewaehlt = $$('.pf-wahl').filter((el) => el.checked).map((el) => Number(el.dataset.i));
+  if (!gewaehlt.length) return melde('Nichts ausgewählt.', 'fehler');
+
+  const auswahl = gewaehlt.map((i) => {
+    const k = pfTreffer.kandidaten[i];
+    return {
+      message_id: k.message_id, attachment_id: k.attachment_id,
+      filename: k.filename, mime: k.mime, absender: k.absender, betreff: k.betreff,
+    };
+  });
+
+  e.target.disabled = true;
+  const alt = e.target.textContent;
+  e.target.textContent = `Liest ${auswahl.length} Beleg(e) …`;
+  try {
+    const { ergebnisse } = await senden(
+      `/api/periods/${zustand.periodeId}/postfach/analysieren`, { auswahl });
+    let gelesen = 0;
+    ergebnisse.forEach((r, n) => {
+      const i = gewaehlt[n];
+      const notiz = $(`.pf-analyse[data-i="${i}"]`);
+      if (r.fehler) { notiz.textContent = `KI: ${r.fehler}`; return; }
+      gelesen++;
+      if (r.lieferant) $(`.pf-lieferant[data-i="${i}"]`).value = String(r.lieferant.id);
+      if (r.datum) $(`.pf-datum[data-i="${i}"]`).value = r.datum;
+      if (r.brutto_cents) $(`.pf-betrag[data-i="${i}"]`).value = (r.brutto_cents / 100).toFixed(2);
+      const teile = [r.aussteller, r.rechnungsnummer && `Nr. ${r.rechnungsnummer}`,
+        r.waehrung && r.waehrung !== 'EUR' && `Währung ${r.waehrung}`,
+        r.quelle === 'ki' && 'Lieferant von der KI vorgeschlagen',
+        r.quelle === 'offen' && 'kein Lieferant erkannt'].filter(Boolean);
+      notiz.textContent = teile.join(' · ');
+    });
+    melde(`${gelesen} von ${ergebnisse.length} Beleg(en) ausgelesen. Bitte prüfen.`,
+      gelesen === ergebnisse.length ? 'erfolg' : 'fehler');
+  } catch (err) { fehlerBehandeln(err); }
+  e.target.disabled = false;
+  e.target.textContent = alt;
+};
+
 $('#pf-uebernehmen').onclick = async (e) => {
   const auswahl = $$('.pf-wahl').filter((el) => el.checked).map((el) => {
     const i = Number(el.dataset.i);
     const k = pfTreffer.kandidaten[i];
     const betrag = $(`.pf-betrag[data-i="${i}"]`).value;
+    const datum = $(`.pf-datum[data-i="${i}"]`).value;
     const lieferant = $(`.pf-lieferant[data-i="${i}"]`).value;
     return {
       message_id: k.message_id, attachment_id: k.attachment_id,
@@ -556,6 +602,7 @@ $('#pf-uebernehmen').onclick = async (e) => {
       absender: k.absender, betreff: k.betreff,
       lieferant_id: lieferant ? Number(lieferant) : null,
       betrag_cents: betrag === '' ? null : zuCents(betrag),
+      doc_date: datum || null,
     };
   });
   if (!auswahl.length) return melde('Nichts ausgewählt.', 'fehler');

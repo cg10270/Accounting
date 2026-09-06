@@ -283,6 +283,11 @@ router.post('/api/periods/:id/postfach/suche', async (req, res) => {
   json(res, await postfach.durchsuche(req.params.id, { nachlaufTage }));
 });
 
+router.post('/api/periods/:id/postfach/analysieren', async (req, res) => {
+  const { auswahl } = await leseJson(req);
+  json(res, await postfach.analysiere(req.params.id, auswahl || []));
+});
+
 router.post('/api/periods/:id/postfach/uebernehmen', async (req, res) => {
   const { auswahl } = await leseJson(req);
   json(res, await postfach.uebernimm(req.params.id, auswahl || []));

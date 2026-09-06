@@ -1,10 +1,11 @@
 import crypto from 'node:crypto';
 import { all, get, run } from '../db.js';
-import { config } from '../config.js';
+import { config, aiEnabled } from '../config.js';
 import { mailer } from './mail/index.js';
 import { speichereDatei } from './ablage.js';
 import { normalizeName } from './bank/grouping.js';
-import { listeLieferanten } from './lieferanten.js';
+import { listeLieferanten, betragPasst } from './lieferanten.js';
+import { analysiereRechnung } from './beleganalyse.js';
 
 // Durchsucht das Buchhaltungspostfach nach Belegen und legt sie ab.
 //
@@ -110,7 +111,7 @@ export async function durchsuche(periodId, { nachlaufTage = 10 } = {}) {
 // Sie werden nur herangezogen, wenn kein betragsfreies Muster passt, und auch
 // dann nur, wenn sie alle auf denselben Lieferanten zeigen. Sonst bleibt die
 // Zuordnung offen: lieber der Mensch entscheidet, als dass geraten wird.
-function rateLieferant(nachricht, anhang, lieferanten) {
+function rateLieferant(nachricht, anhang, lieferanten, betragCents = null) {
   const roh = `${nachricht.from || ''} ${nachricht.subject || ''} ${anhang.filename || ''}`;
   const heuhaufen = `${normalizeName(roh)} ${normalizeName(roh, { psp: false })}`;
 
@@ -118,7 +119,11 @@ function rateLieferant(nachricht, anhang, lieferanten) {
   for (const l of lieferanten) {
     for (const m of l.muster) {
       if (!heuhaufen.includes(m.muster)) continue;
-      const betragsgebunden = m.betrag_min_cents != null || m.betrag_max_cents != null;
+      const hatGrenze = m.betrag_min_cents != null || m.betrag_max_cents != null;
+      // Ist der Rechnungsbetrag bekannt - etwa weil die KI ihn gelesen hat -,
+      // laesst sich ein betragsgebundenes Muster entscheiden statt nur ahnen.
+      if (hatGrenze && betragCents != null && !betragPasst(m, betragCents)) continue;
+      const betragsgebunden = hatGrenze && betragCents == null;
       treffer.push({ id: l.id, name: l.name, laenge: m.muster.length, betragsgebunden });
     }
   }
@@ -133,6 +138,66 @@ function rateLieferant(nachricht, anhang, lieferanten) {
   const lieferantIds = new Set(treffer.map((t) => t.id));
   if (lieferantIds.size > 1) return null;   // mehrdeutig - der Mensch entscheidet
   return { id: treffer[0].id, name: treffer[0].name };
+}
+
+/**
+ * Liest ausgewählte Anhänge mit der KI aus: Aussteller, Rechnungsdatum und
+ * Betrag stehen im PDF, nicht in der Mail. Aus dem gelesenen Betrag folgt
+ * ausserdem, welches betragsgebundene Muster greift - bei Google entscheidet
+ * er zwischen Werbung und Software.
+ *
+ * Abgelegt wird hier nichts: das Ergebnis ist ein Vorschlag für die Oberfläche.
+ * @param {number} periodId
+ * @param {Array} auswahl  [{ message_id, attachment_id, filename, mime, absender, betreff }]
+ */
+export async function analysiere(periodId, auswahl = []) {
+  const period = get('SELECT * FROM periods WHERE id = ?', Number(periodId));
+  if (!period) throw new Error('Zeitraum nicht gefunden.');
+  if (!aiEnabled) {
+    throw new Error('Kein ANTHROPIC_API_KEY gesetzt - ohne ihn kann die KI die Belege nicht lesen.');
+  }
+
+  const lieferanten = listeLieferanten({ nurAktive: true });
+  const schlank = lieferanten.map((l) => ({ id: l.id, name: l.name }));
+  const ergebnisse = [];
+
+  for (const eintrag of auswahl) {
+    const basis = { message_id: eintrag.message_id, attachment_id: eintrag.attachment_id };
+    try {
+      const inhalt = await mailer.ladeAnhang(eintrag.message_id, eintrag.attachment_id);
+      const daten = await analysiereRechnung({
+        buffer: inhalt,
+        mime: eintrag.mime,
+        filename: eintrag.filename,
+        lieferanten: schlank,
+        absender: eintrag.absender,
+        betreff: eintrag.betreff,
+      });
+
+      // Die Muster der Stammdaten schlagen die Einschätzung der KI: sie sind
+      // gepflegt und kennen die Betragsgrenzen. Die KI springt ein, wo kein
+      // Muster greift.
+      const betrag = daten.brutto_cents || null;
+      const ausMustern = rateLieferant(
+        { from: eintrag.absender, subject: eintrag.betreff },
+        { filename: eintrag.filename },
+        lieferanten,
+        betrag,
+      );
+
+      ergebnisse.push({
+        ...basis,
+        ...daten,
+        brutto_cents: betrag,
+        lieferant: ausMustern || daten.lieferant || null,
+        quelle: ausMustern ? 'muster' : (daten.lieferant ? 'ki' : 'offen'),
+      });
+    } catch (err) {
+      ergebnisse.push({ ...basis, fehler: err.message });
+    }
+  }
+
+  return { ergebnisse };
 }
 
 /**
