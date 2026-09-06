@@ -647,6 +647,9 @@ const server = http.createServer(async (req, res) => {
   try {
     await treffer.handler(req, res);
   } catch (err) {
+    // Ohne Protokoll im Terminal ist ein fehlgeschlagener Upload spaeter nicht
+    // mehr nachvollziehbar - die Meldung im Browser ist schnell weggeklickt.
+    console.error(`FEHLER ${req.method} ${pfad}: ${err.message}`);
     if (!res.headersSent) fehler(res, err, 400);
     else res.end();
   }

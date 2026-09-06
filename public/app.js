@@ -225,23 +225,17 @@ function verdrahteAufgabendetail(a) {
 
 }
 
-// Fasst zusammen, was die KI aus den frisch hochgeladenen Belegen gelesen hat.
-function analyseText(anzahl, ergebnisse) {
-  const gelesen = ergebnisse.filter((r) => r?.analyse?.uebernommen?.length);
-  const summe = gelesen.reduce((s, r) => s + (r.analyse.brutto_cents || 0), 0);
-  if (!gelesen.length) {
-    const hinweis = ergebnisse.find((r) => r?.analyse?.hinweis || r?.analyse?.fehler)?.analyse;
-    return `${anzahl} Datei(en) hochgeladen.` +
-      (hinweis ? ` Nicht ausgelesen: ${hinweis.fehler || hinweis.hinweis}` : '');
-  }
-  return `${anzahl} Datei(en) hochgeladen, ${gelesen.length} ausgelesen (${euro(summe)}).`;
-}
-
-async function ladeDateienHoch(taskId, dateien) {
-  const ergebnisse = [];
+/**
+ * Laedt Dateien nacheinander hoch und berichtet, was wirklich ankam.
+ * Fehlschlaege duerfen nicht in einer Erfolgsmeldung untergehen: wer 100
+ * Dateien hochlaedt, muss sehen, wenn nur 14 gespeichert wurden.
+ */
+async function dateienSenden(pfad, dateien) {
+  const gespeichert = [];
+  const fehler = [];
   for (const datei of dateien) {
     try {
-      ergebnisse.push(await api(`/api/tasks/${taskId}/dateien`, {
+      gespeichert.push(await api(pfad, {
         method: 'POST',
         headers: {
           'Content-Type': datei.type || 'application/octet-stream',
@@ -249,9 +243,31 @@ async function ladeDateienHoch(taskId, dateien) {
         },
         body: datei,
       }));
-    } catch (err) { fehlerBehandeln(err); }
+    } catch (err) {
+      fehler.push({ name: datei.name, fehler: err.message || String(err) });
+    }
   }
-  melde(analyseText(dateien.length, ergebnisse), 'erfolg');
+
+  const gelesen = gespeichert.filter((r) => r?.analyse?.uebernommen?.length);
+  const summe = gelesen.reduce((s, r) => s + (r.analyse.brutto_cents || 0), 0);
+
+  const teile = [`${gespeichert.length} von ${dateien.length} gespeichert`];
+  if (gelesen.length) teile.push(`${gelesen.length} ausgelesen (${euro(summe)})`);
+  else {
+    const hinweis = gespeichert.find((r) => r?.analyse?.hinweis || r?.analyse?.fehler)?.analyse;
+    if (hinweis) teile.push(`nicht ausgelesen: ${hinweis.fehler || hinweis.hinweis}`);
+  }
+  if (fehler.length) {
+    teile.push(`${fehler.length} fehlgeschlagen: ${fehler[0].name} — ${fehler[0].fehler}`);
+    console.warn('Upload fehlgeschlagen:', fehler);
+  }
+
+  melde(teile.join(' · ') + '.', fehler.length ? 'fehler' : 'erfolg');
+  return { gespeichert, fehler };
+}
+
+async function ladeDateienHoch(taskId, dateien) {
+  await dateienSenden(`/api/tasks/${taskId}/dateien`, dateien);
   await ladeAufgaben();
 }
 
@@ -449,17 +465,7 @@ function verdrahteMonat() {
 }
 
 async function belegeHochladen(positionId, dateien) {
-  const ergebnisse = [];
-  for (const datei of dateien) {
-    try {
-      ergebnisse.push(await api(`/api/periods/${zustand.periodeId}/positionen/${positionId}/dateien`, {
-        method: 'POST',
-        headers: { 'Content-Type': datei.type || 'application/octet-stream', 'X-Filename': encodeURIComponent(datei.name) },
-        body: datei,
-      }));
-    } catch (err) { fehlerBehandeln(err); }
-  }
-  melde(analyseText(dateien.length, ergebnisse), 'erfolg');
+  await dateienSenden(`/api/periods/${zustand.periodeId}/positionen/${positionId}/dateien`, dateien);
   await Promise.all([ladeAbgleich(), ladeMonat(), ladeLieferanten()]);
 }
 
@@ -603,17 +609,7 @@ async function belegAnfordern(txId) {
 }
 
 async function belegZuBuchung(txId, dateien) {
-  const ergebnisse = [];
-  for (const datei of dateien) {
-    try {
-      ergebnisse.push(await api(`/api/bank/buchungen/${txId}/beleg`, {
-        method: 'POST',
-        headers: { 'Content-Type': datei.type || 'application/octet-stream', 'X-Filename': encodeURIComponent(datei.name) },
-        body: datei,
-      }));
-    } catch (err) { fehlerBehandeln(err); }
-  }
-  melde(analyseText(dateien.length, ergebnisse), 'erfolg');
+  await dateienSenden(`/api/bank/buchungen/${txId}/beleg`, dateien);
   await Promise.all([ladeAbgleich(), ladeMonat()]);
 }
 

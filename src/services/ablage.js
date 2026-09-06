@@ -26,7 +26,11 @@ export async function speichereDatei({ periodId, taskId = null, lieferantId = nu
     periodId, taskId, lieferantId, sanitize(filename), mime, buffer.length, checksum,
     abgelegt.storagePath, abgelegt.storageId, abgelegt.webUrl || '', source,
   );
-  return get('SELECT * FROM artifacts WHERE id = ?', Number(r.lastInsertRowid));
+  const eintrag = get('SELECT * FROM artifacts WHERE id = ?', Number(r.lastInsertRowid));
+  // Jede abgelegte Datei erscheint im Terminal: so ist nachpruefbar, wie viele
+  // von hundert Uploads wirklich angekommen sind.
+  if (!process.env.STILL) console.log(`abgelegt #${eintrag.id} ${eintrag.storage_path}`);
+  return eintrag;
 }
 
 // Verweis auf eine abgelegte Datei, wie ihn die Backends erwarten.
