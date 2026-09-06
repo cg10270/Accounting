@@ -73,5 +73,14 @@ function mimeFuer(name) {
 }
 
 export function describe() {
-  return { driver: 'mock', outbox: config.outboxDir, ready: true };
+  return {
+    driver: 'mock',
+    outbox: config.outboxDir,
+    ready: true,
+    // Ein echtes Postfach ist das nicht - der Unterschied muss sichtbar sein,
+    // sonst sieht "nichts gefunden" aus wie "keine Rechnungen da".
+    echtesPostfach: false,
+    hinweis: `Kein echtes Postfach angebunden. Gesucht wird im Ordner ${config.dataDir}/inbox. ` +
+      'Für den Abruf aus Gmail: MAIL_DRIVER=gmail in der .env setzen und den Google-Zugang einrichten (docs/GOOGLE.md).',
+  };
 }

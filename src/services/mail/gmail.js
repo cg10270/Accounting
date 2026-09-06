@@ -57,7 +57,11 @@ export function describe() {
     inbox: config.accountingInbox,
     dienstkonto,
     ready: fehlend.length === 0,
-    ...(fehlend.length ? { fehlt: fehlend } : {}),
+    echtesPostfach: true,
+    ...(fehlend.length ? {
+      fehlt: fehlend,
+      hinweis: `Der Google-Zugang ist unvollständig: ${fehlend.join(', ')}. Prüfen mit: npm run google:check`,
+    } : {}),
   };
 }
 

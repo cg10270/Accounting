@@ -53,6 +53,11 @@ export async function durchsuche(periodId, { nachlaufTage = 10 } = {}) {
     throw new Error(`Der Mail-Zugang "${mailer.name}" kann das Postfach nicht durchsuchen.`);
   }
 
+  const zugang = mailer.describe();
+  if (zugang.ready === false) {
+    throw new Error(zugang.hinweis || `Der Mail-Zugang "${mailer.name}" ist nicht einsatzbereit.`);
+  }
+
   const { query, von, bis } = bereich(period, nachlaufTage);
   const nachrichten = await mailer.sucheNachrichten(query);
 
@@ -85,6 +90,8 @@ export async function durchsuche(periodId, { nachlaufTage = 10 } = {}) {
 
   return {
     period,
+    // Damit die Oberflaeche "nichts gefunden" von "nichts angebunden" trennen kann.
+    zugang: { driver: zugang.driver, echtesPostfach: zugang.echtesPostfach !== false, hinweis: zugang.hinweis || '' },
     zeitraum: { von: von.toISOString().slice(0, 10), bis: bis.toISOString().slice(0, 10), query },
     nachrichten: nachrichten.length,
     kandidaten,

@@ -500,6 +500,11 @@ function zeichnePostfach() {
   const d = pfTreffer;
   $('#pf-zeitraum').textContent = `${datumDe(d.zeitraum.von)} bis ${datumDe(d.zeitraum.bis)}`;
   $('#pf-karte').hidden = false;
+
+  // Ohne echtes Postfach ist ein leeres Ergebnis keine Aussage über Rechnungen.
+  $('#pf-warnung').hidden = d.zugang?.echtesPostfach !== false;
+  if (d.zugang?.echtesPostfach === false) $('#pf-warnung-text').textContent = d.zugang.hinweis;
+
   $('#pf-stand').textContent =
     `${d.nachrichten} Mail(s) durchsucht · ${d.kandidaten.length} Anhänge · ` +
     `${d.neu} neu${d.verworfen ? ` · ${d.verworfen} aussortiert` : ''}`;
