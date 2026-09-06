@@ -11,14 +11,30 @@ KI ist gebaut, aber für v2 geparkt (siehe [v2/](v2/README.md)).
 
 ## Schnellstart
 
+Voraussetzung: [Node.js](https://nodejs.org) ab Version 22.5.
+
 ```bash
 npm install
-cp .env.example .env      # VAULT_PASSPHRASE eintragen
-npm run seed              # Aufgabenvorlagen anlegen
-npm run seed:checkliste   # Monatscheckliste mit Bereichen und Lieferanten
+npm run einrichten        # Konfiguration, Passphrase, Checkliste — einmalig
 npm start                 # http://127.0.0.1:4000
-npm test                  # 48 Tests
 ```
+
+`npm run einrichten` erstellt die Datei `.env` aus der Vorlage `.env.example`,
+erzeugt eine zufällige `VAULT_PASSPHRASE` und legt Checkliste und Lieferanten an.
+**Die Passphrase wird einmal angezeigt — sie gehört in den Passwortmanager.**
+Mit ihr werden die Portal-Passwörter verschlüsselt; geht sie verloren, sind alle
+gespeicherten Zugänge unlesbar. Ein zweiter Aufruf überschreibt nichts.
+
+Weitere Befehle:
+
+```bash
+npm test                  # 73 Tests
+npm run google:check      # Google-Einrichtung prüfen
+npm run seed:checkliste   # Checkliste nachziehen, wenn sie erweitert wurde
+```
+
+**Das Programm gehört auf deinen eigenen Rechner, nicht auf einen Server:**
+„Portal öffnen" macht ein Browserfenster auf, in dem du selbst arbeitest.
 
 ## Die Checkliste
 

@@ -10,6 +10,8 @@ import { get } from './db.js';
 import { legeAn as legeLieferantAn, listeLieferanten } from './services/lieferanten.js';
 import { legeBereichAn, legePositionAn, listeBereiche } from './services/checkliste.js';
 
+const sagen = process.env.STILL ? () => {} : console.log;
+
 const LIEFERANTEN = [
   { name: 'Finom',            url: 'https://app.finom.co',                          muster: ['finom'] },
   { name: 'Cleverlohn',       url: '',                                              muster: ['cleverlohn'] },
@@ -111,14 +113,14 @@ for (const bereich of CHECKLISTE) {
   }
 }
 
-console.log(`Checkliste: ${neueBereiche} Bereich(e), ${neuePositionen} Position(en), ${neueLieferanten} Lieferant(en) angelegt.`);
+sagen(`Checkliste: ${neueBereiche} Bereich(e), ${neuePositionen} Position(en), ${neueLieferanten} Lieferant(en) angelegt.`);
 if (neueLieferanten) {
-  console.log('\nHinweise:');
-  console.log('  - Die Portaladressen sind Startseiten. Nach der ersten Anmeldung');
-  console.log('    unter Lieferanten > Ändern die direkte Rechnungsadresse eintragen.');
-  console.log('  - Zugangsdaten sind noch nicht hinterlegt.');
-  console.log('  - "Google Ads" und "Google Workspace" erscheinen im Kontoauszug oft');
-  console.log('    beide nur als "GOOGLE". Deshalb entscheidet dort der Betrag:');
-  console.log('    über 1.000 EUR gilt als Werbung, darunter als Software. Steht der');
-  console.log('    Zweck ausdrücklich im Buchungstext, hat er Vorrang vor dieser Regel.');
+  sagen('\nHinweise:');
+  sagen('  - Die Portaladressen sind Startseiten. Nach der ersten Anmeldung');
+  sagen('    unter Lieferanten > Ändern die direkte Rechnungsadresse eintragen.');
+  sagen('  - Zugangsdaten sind noch nicht hinterlegt.');
+  sagen('  - "Google Ads" und "Google Workspace" erscheinen im Kontoauszug oft');
+  sagen('    beide nur als "GOOGLE". Deshalb entscheidet dort der Betrag:');
+  sagen('    über 1.000 EUR gilt als Werbung, darunter als Software. Steht der');
+  sagen('    Zweck ausdrücklich im Buchungstext, hat er Vorrang vor dieser Regel.');
 }

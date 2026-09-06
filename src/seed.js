@@ -3,6 +3,8 @@
 import { all, get, run } from './db.js';
 import { config } from './config.js';
 
+const sagen = process.env.STILL ? () => {} : console.log;
+
 const VORLAGEN = [
   ['Eingangsrechnungen sammeln', 'Alle Eingangsrechnungen des Monats aus Postfach und Lieferantenportalen zusammentragen.', 'belege',
    'Durchsuche das Postfach nach Rechnungen des Zeitraums, lade jede als PDF und lege sie im Zielordner ab. Benenne sie nach dem Muster JJJJ-MM-TT_Lieferant_Betrag.pdf.'],
@@ -24,13 +26,13 @@ if (!get('SELECT id FROM task_templates LIMIT 1')) {
     run('INSERT INTO task_templates (position, title, description, prompt, category) VALUES (?, ?, ?, ?, ?)',
       i + 1, title, description, prompt, category);
   }
-  console.log(`${VORLAGEN.length} Aufgabenvorlagen angelegt.`);
+  sagen(`${VORLAGEN.length} Aufgabenvorlagen angelegt.`);
 } else {
-  console.log(`${all('SELECT id FROM task_templates').length} Aufgabenvorlagen vorhanden - unveraendert.`);
+  sagen(`${all('SELECT id FROM task_templates').length} Aufgabenvorlagen vorhanden - unveraendert.`);
 }
 
 if (!get('SELECT id FROM shortcodes LIMIT 1')) {
   run('INSERT INTO shortcodes (code, email, name) VALUES (?, ?, ?)',
     'az', `az@${config.shortcodeDomain}`, '');
-  console.log(`Beispiel-Kuerzel "az" angelegt (az@${config.shortcodeDomain}).`);
+  sagen(`Beispiel-Kuerzel "az" angelegt (az@${config.shortcodeDomain}).`);
 }
